@@ -293,7 +293,8 @@ class SoundManagerDialog(wx.Dialog):
     quickly via Ctrl+1..9 while focused on the list.
 
     Keyboard shortcuts inside the dialog:
-        Ctrl+I / Alt+I  — Import more sounds
+        Ctrl+I          — Import more sounds via file picker
+        Ctrl+V          — Paste audio files copied from Explorer
         F2              — Edit selected sound properties
         Delete          — Remove selected sound
         Ctrl+1..9       — Move selected sound to bus 1..9
@@ -320,9 +321,9 @@ class SoundManagerDialog(wx.Dialog):
         hint = wx.StaticText(
             panel,
             label=(
-                "Manage all sounds. Use Ctrl+1–9 to assign the selected sound to a bus. "
+                "Manage all sounds. Use Ctrl+1\u20139 to assign the selected sound to a bus. "
                 "Ctrl+U clears the bus. Press F2 to edit, Delete to remove, "
-                "Ctrl+I to import more."
+                "Ctrl+I to import from file picker, Ctrl+V to paste files copied from Explorer."
             )
         )
         hint.Wrap(680)
@@ -452,9 +453,14 @@ class SoundManagerDialog(wx.Dialog):
             self.OnRemove(None)
             return
 
-        # Ctrl+I → import
+        # Ctrl+I → import via file picker
         if mods == wx.MOD_CONTROL and key == ord('I'):
             self.OnImport(None)
+            return
+
+        # Ctrl+V → paste files from clipboard
+        if mods == wx.MOD_CONTROL and key == ord('V'):
+            self._paste_from_clipboard()
             return
 
         event.Skip()
@@ -522,6 +528,91 @@ class SoundManagerDialog(wx.Dialog):
         if skipped:
             msg += f" {skipped} file(s) could not be copied."
         wx.MessageBox(msg, "Import Complete", wx.OK | wx.ICON_INFORMATION)
+
+    def _paste_from_clipboard(self):
+        """Import audio files that were copied to the clipboard from Windows Explorer (Ctrl+C → Ctrl+V)."""
+        AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".aiff"}
+
+        # Read file paths from the clipboard
+        file_data = wx.FileDataObject()
+        if not wx.TheClipboard.Open():
+            wx.MessageBox(
+                "Could not open the clipboard.",
+                "Paste Error", wx.OK | wx.ICON_ERROR,
+            )
+            return
+
+        got_data = wx.TheClipboard.GetData(file_data)
+        wx.TheClipboard.Close()
+
+        if not got_data:
+            wx.MessageBox(
+                "The clipboard does not contain any files.\n"
+                "Copy audio files in Explorer first, then press Ctrl+V here.",
+                "Nothing to Paste", wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+
+        all_paths   = file_data.GetFilenames()
+        audio_paths = [p for p in all_paths
+                       if os.path.splitext(p)[1].lower() in AUDIO_EXTS]
+
+        if not audio_paths:
+            wx.MessageBox(
+                f"No supported audio files found on the clipboard "
+                f"({len(all_paths)} non-audio file(s) ignored).\n"
+                f"Supported formats: {', '.join(sorted(AUDIO_EXTS))}",
+                "Nothing to Paste", wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+
+        sounds_dir = os.path.join(self.project_dir, "sounds")
+        os.makedirs(sounds_dir, exist_ok=True)
+        imported = 0
+        skipped  = 0
+
+        for src in audio_paths:
+            basename    = os.path.basename(src)
+            name_no_ext = os.path.splitext(basename)[0]
+
+            # Avoid collisions in the sounds/ folder
+            target  = basename
+            counter = 1
+            while os.path.exists(os.path.join(sounds_dir, target)):
+                base, ext = os.path.splitext(basename)
+                target = f"{base}_{counter}{ext}"
+                counter += 1
+
+            try:
+                import shutil
+                shutil.copy2(src, os.path.join(sounds_dir, target))
+            except Exception:
+                skipped += 1
+                continue
+
+            self.project_data["sounds"].append({
+                "id":       str(uuid.uuid4()),
+                "name":     name_no_ext,
+                "filename": target,
+                "bus_id":   "",
+                "hotkey":   "",
+                "default_scenario": {
+                    "volume":      1.0,
+                    "fade_in_ms":  0,
+                    "fade_out_ms": 0,
+                    "speed":       1.0,
+                    "loop":        False,
+                },
+                "scenarios": [],
+                "missing":   False,
+            })
+            imported += 1
+
+        self._PopulateList()
+        msg = f"Pasted {imported} sound(s)."
+        if skipped:
+            msg += f" {skipped} file(s) could not be copied."
+        wx.MessageBox(msg, "Paste Complete", wx.OK | wx.ICON_INFORMATION)
 
     def OnEdit(self, event):
         """Open AddEditSoundDialog for the selected sound."""
