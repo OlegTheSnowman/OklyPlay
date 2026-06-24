@@ -29,6 +29,7 @@ ID_BUS_VOL_DOWN = wx.ID_HIGHEST + 11
 ID_MASTER_VOL_UP = wx.ID_HIGHEST + 12
 ID_MASTER_VOL_DOWN = wx.ID_HIGHEST + 13
 ID_MANAGE_PROJECTS = wx.ID_HIGHEST + 14
+ID_SET_SOUND_HOTKEY = wx.ID_HIGHEST + 15
 
 ID_BUS_BASE = wx.ID_HIGHEST + 100  # ID_BUS_BASE + 1 to 9
 ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
@@ -131,6 +132,7 @@ class MainFrame(wx.Frame):
         edit_menu.Append(ID_ADD_SOUND, "&Add Sound...\tCtrl+I")
         edit_menu.Append(ID_EDIT_SOUND, "&Edit Sound...\tF2")
         edit_menu.Append(ID_REMOVE_SOUND, "&Remove Sound\tDelete")
+        edit_menu.Append(ID_SET_SOUND_HOTKEY, "Set Hotkey...\tAlt+K")
         edit_menu.AppendSeparator()
         edit_menu.Append(ID_EDIT_SCENARIOS, "Edit S&cenarios...\tCtrl+E")
         menubar.Append(edit_menu, "&Edit")
@@ -183,6 +185,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnAddSound, id=ID_ADD_SOUND)
         self.Bind(wx.EVT_MENU, self.OnEditSound, id=ID_EDIT_SOUND)
         self.Bind(wx.EVT_MENU, self.OnRemoveSound, id=ID_REMOVE_SOUND)
+        self.Bind(wx.EVT_MENU, self.OnSetSoundHotkey, id=ID_SET_SOUND_HOTKEY)
         self.Bind(wx.EVT_MENU, self.OnEditScenarios, id=ID_EDIT_SCENARIOS)
         
         self.Bind(wx.EVT_MENU, self.OnManageBuses, id=ID_MANAGE_BUSES)
@@ -385,6 +388,7 @@ class MainFrame(wx.Frame):
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('I'), ID_ADD_SOUND),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_F2, ID_EDIT_SOUND),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_DELETE, ID_REMOVE_SOUND),
+            wx.AcceleratorEntry(wx.ACCEL_ALT, ord('K'), ID_SET_SOUND_HOTKEY),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('E'), ID_EDIT_SCENARIOS),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('B'), ID_MANAGE_BUSES),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, ID_STOP_BUS),
@@ -672,6 +676,52 @@ class MainFrame(wx.Frame):
                 Speech.speak(f"Updated {updated_data['name']}")
             except Exception as e:
                 wx.MessageBox(f"Failed to update sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+        dlg.Destroy()
+
+    def OnSetSoundHotkey(self, event):
+        if not self.project_data:
+            return
+            
+        sel = self.sounds_list.GetFirstSelected()
+        if sel == wx.NOT_FOUND:
+            Speech.speak("No sound selected to set hotkey")
+            return
+            
+        sound_idx = self.sounds_list.GetItemData(sel)
+        sound = self.current_bus_sounds[sound_idx]
+        
+        dlg = ui_dialogs.QuickHotkeyDialog(self, sound["name"], sound.get("hotkey", ""))
+        if dlg.ShowModal() == wx.ID_OK:
+            new_hotkey = dlg.GetValue()
+            
+            # Check for conflict
+            conflict = False
+            if new_hotkey:
+                # Check other sounds
+                for s in self.project_data["sounds"]:
+                    if s["id"] != sound["id"] and s.get("hotkey", "").strip().lower() == new_hotkey.lower():
+                        wx.MessageBox(
+                            f"The hotkey '{new_hotkey}' is already assigned to the sound '{s['name']}'.",
+                            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
+                        )
+                        conflict = True
+                        break
+                # Check buses
+                if not conflict:
+                    for b in self.project_data["buses"]:
+                        if b.get("hotkey", "").strip().lower() == new_hotkey.lower():
+                            wx.MessageBox(
+                                f"The hotkey '{new_hotkey}' is already assigned to the bus '{b['name']}'.",
+                                "Hotkey Conflict", wx.OK | wx.ICON_WARNING
+                            )
+                            conflict = True
+                            break
+            if not conflict:
+                sound["hotkey"] = new_hotkey
+                project_manager.save_project(self.project_dir, self.project_data)
+                self.RefreshSoundsList()
+                self.RebuildAccelerators()
+                Speech.speak(f"Hotkey for {sound['name']} set to {new_hotkey if new_hotkey else 'none'}")
         dlg.Destroy()
 
     def OnRemoveSound(self, event):
