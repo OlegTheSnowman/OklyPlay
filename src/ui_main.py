@@ -295,9 +295,12 @@ class MainFrame(wx.Frame):
             self.project_dir = path
             
             # Setup volumes in audio engine
+            self.audio_engine.clear_buses_config()
             self.audio_engine.set_master_volume(self.project_data.get("master_volume", 0.8))
             for bus in self.project_data.get("buses", []):
                 self.audio_engine.set_bus_volume(bus["id"], bus.get("volume", 1.0))
+                self.audio_engine.set_bus_duck_factor(bus["id"], bus.get("duck_factor", 1.0))
+                self.audio_engine.set_bus_duckable(bus["id"], bus.get("duckable", False))
                 
             # Set audio device if saved
             device_index = self.project_data.get("output_device")
@@ -827,9 +830,12 @@ class MainFrame(wx.Frame):
         # Save changes
         project_manager.save_project(self.project_dir, self.project_data)
         
-        # Update audio engine bus volumes
+        # Update audio engine bus volumes and ducking settings
+        self.audio_engine.clear_buses_config()
         for bus in self.project_data["buses"]:
             self.audio_engine.set_bus_volume(bus["id"], bus.get("volume", 1.0))
+            self.audio_engine.set_bus_duck_factor(bus["id"], bus.get("duck_factor", 1.0))
+            self.audio_engine.set_bus_duckable(bus["id"], bus.get("duckable", False))
             
         # Verify selected bus still exists
         bus_ids = [b["id"] for b in self.project_data["buses"]]
