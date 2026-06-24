@@ -23,9 +23,12 @@ class AccessibleName(wx.Accessible):
 
 def label_control(control, name):
     control.SetName(name)
-    acc = AccessibleName(control, name)
-    control.SetAccessible(acc)
-    control._accessible_obj = acc
+    # Avoid SetAccessible for controls with native children (lists, dropdowns)
+    # as overriding their accessible object breaks child item navigation/reading.
+    if not isinstance(control, (wx.ListBox, wx.ListCtrl, wx.Choice)):
+        acc = AccessibleName(control, name)
+        control.SetAccessible(acc)
+        control._accessible_obj = acc
     
     # Also label the internal Edit/Text child for spin controls
     if isinstance(control, (wx.SpinCtrl, wx.SpinCtrlDouble)):
