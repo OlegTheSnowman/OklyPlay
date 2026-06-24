@@ -866,10 +866,6 @@ class MainFrame(wx.Frame):
                 
         try:
             self.audio_engine.play(filepath, scenario, bus_id, bus_mode, sound_name=sound["name"])
-            announcement = f"Playing {sound['name']}"
-            if scenario_name:
-                announcement += f" — {scenario_name}"
-            Speech.speak(announcement)
             self.UpdateStatusBar()
         except Exception as e:
             Speech.speak(f"Error: Playback failed for {sound['name']}")
@@ -920,9 +916,6 @@ class MainFrame(wx.Frame):
             done_channels = self.audio_engine.cleanup_done_channels()
             if done_channels:
                 self.UpdateStatusBar()
-                for ch in done_channels:
-                    if ch.sound_name:
-                        Speech.speak(f"Stopped {ch.sound_name}")
 
     # --- Help & About Dialog ---
     def OnAbout(self, event):
