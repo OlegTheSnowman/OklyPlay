@@ -818,21 +818,24 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         dlg.Destroy()
 
     def test_add_edit_bus_dialog_hotkey(self):
-        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S", "crossfade_ms": 300, "hotkey_action": "single_sequential"}
+        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S", "crossfade_ms": 300, "hotkey_action": "single_sequential", "track_crossfade_ms": 1500}
         dlg = ui_dialogs.AddEditBusDialog(None, bus_data)
         self.assertEqual(dlg.hotkey_txt.GetValue(), "Ctrl+Alt+S")
         self.assertEqual(dlg.hotkey_txt.GetAccessible().GetName(0)[1], "Bus Hotkey")
         self.assertEqual(dlg.crossfade_spin.GetValue(), 300)
         self.assertEqual(dlg.action_choice.GetSelection(), 3)  # Single (Sequential)
+        self.assertEqual(dlg.track_crossfade_spin.GetValue(), 1500)
         
-        # Test GetBusData includes hotkey, crossfade_ms, and hotkey_action
+        # Test GetBusData includes hotkey, crossfade_ms, hotkey_action, and track_crossfade_ms
         dlg.hotkey_txt.SetValue("F9")
         dlg.crossfade_spin.SetValue(750)
         dlg.action_choice.SetSelection(1)  # Loop (Sequential)
+        dlg.track_crossfade_spin.SetValue(2500)
         data = dlg.GetBusData()
         self.assertEqual(data["hotkey"], "F9")
         self.assertEqual(data["crossfade_ms"], 750)
         self.assertEqual(data["hotkey_action"], "loop_sequential")
+        self.assertEqual(data["track_crossfade_ms"], 2500)
         
         # Test Mode choice recommendation toggling
         dlg.mode_choice.SetSelection(0)  # exclusive
@@ -841,6 +844,7 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         dlg.OnModeChanged(event)
         self.assertEqual(dlg.action_choice.GetSelection(), 0)  # Loop (Shuffle)
         self.assertEqual(dlg.crossfade_spin.GetValue(), 500)
+        self.assertEqual(dlg.track_crossfade_spin.GetValue(), 2000)
         
         dlg.Destroy()
 
