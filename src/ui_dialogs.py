@@ -75,7 +75,7 @@ class NewProjectDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         
         # Grid Sizer for form
-        grid = wx.FlexGridSizer(2, 2, 10, 10)
+        grid = wx.FlexGridSizer(0, 2, 10, 10)
         grid.AddGrowableCol(1, 1)
         
         # Name field
@@ -87,12 +87,16 @@ class NewProjectDialog(wx.Dialog):
         
         # Location field
         loc_lbl = wx.StaticText(panel, label="Location:")
-        self.loc_picker = wx.DirPickerCtrl(panel, message="Choose project location")
-        self.loc_picker.SetName("Project Location")
-        self.loc_picker.GetTextCtrl().SetName("Project Location")
-        self.loc_picker.GetPickerCtrl().SetName("Browse Project Location")
+        loc_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.loc_txt = wx.TextCtrl(panel)
+        self.loc_txt.SetName("Project Location")
+        self.browse_btn = wx.Button(panel, label="&Browse...")
+        self.browse_btn.SetName("Browse Project Location")
+        loc_sizer.Add(self.loc_txt, 1, wx.EXPAND | wx.RIGHT, 5)
+        loc_sizer.Add(self.browse_btn, 0)
         grid.Add(loc_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.loc_picker, 1, wx.EXPAND)
+        grid.Add(loc_sizer, 1, wx.EXPAND)
+        self.browse_btn.Bind(wx.EVT_BUTTON, self.OnBrowse)
         
         panel_sizer = wx.BoxSizer(wx.VERTICAL)
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
@@ -111,7 +115,7 @@ class NewProjectDialog(wx.Dialog):
 
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
-        path = self.loc_picker.GetPath().strip()
+        path = self.loc_txt.GetValue().strip()
         
         if not name:
             wx.MessageBox("Project name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
@@ -120,16 +124,25 @@ class NewProjectDialog(wx.Dialog):
             
         if not path or not os.path.isdir(path):
             wx.MessageBox("Please select a valid directory path.", "Error", wx.OK | wx.ICON_ERROR)
-            self.loc_picker.SetFocus()
+            self.loc_txt.SetFocus()
             return
             
         event.Skip()  # Continue standard dialog dismissal
+
+    def OnBrowse(self, event):
+        default_path = self.loc_txt.GetValue().strip()
+        if not default_path or not os.path.exists(default_path):
+            default_path = os.path.expanduser("~")
+        dlg = wx.DirDialog(self, "Choose project location", defaultPath=default_path, style=wx.DD_DEFAULT_STYLE)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.loc_txt.SetValue(dlg.GetPath())
+        dlg.Destroy()
 
     def GetProjectName(self):
         return self.name_txt.GetValue().strip()
 
     def GetProjectPath(self):
-        return os.path.join(self.loc_picker.GetPath().strip(), self.name_txt.GetValue().strip())
+        return os.path.join(self.loc_txt.GetValue().strip(), self.name_txt.GetValue().strip())
 
 
 class PreferencesDialog(wx.Dialog):
@@ -138,7 +151,7 @@ class PreferencesDialog(wx.Dialog):
         super().__init__(parent, title="Preferences", size=(400, 220))
         
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(2, 2, 12, 10)
+        grid = wx.FlexGridSizer(0, 2, 12, 10)
         grid.AddGrowableCol(1, 1)
         
         # Output device choice
@@ -198,7 +211,7 @@ class AddEditSoundDialog(wx.Dialog):
         self.existing_sounds = existing_sounds
         
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(8, 2, 10, 10)
+        grid = wx.FlexGridSizer(0, 2, 10, 10)
         grid.AddGrowableCol(1, 1)
         
         # Name field
@@ -209,15 +222,15 @@ class AddEditSoundDialog(wx.Dialog):
         
         # File field
         grid.Add(wx.StaticText(panel, label="Audio File:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.file_picker = wx.FilePickerCtrl(
-            panel,
-            message="Select Audio File",
-            wildcard="Audio files (*.mp3;*.wav;*.ogg;*.flac;*.aiff)|*.mp3;*.wav;*.ogg;*.flac;*.aiff"
-        )
-        self.file_picker.SetName("Audio File Path")
-        self.file_picker.GetTextCtrl().SetName("Audio File Path")
-        self.file_picker.GetPickerCtrl().SetName("Browse Audio File")
-        grid.Add(self.file_picker, 1, wx.EXPAND)
+        file_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.file_txt = wx.TextCtrl(panel)
+        self.file_txt.SetName("Audio File Path")
+        self.file_browse_btn = wx.Button(panel, label="&Browse...")
+        self.file_browse_btn.SetName("Browse Audio File")
+        file_sizer.Add(self.file_txt, 1, wx.EXPAND | wx.RIGHT, 5)
+        file_sizer.Add(self.file_browse_btn, 0)
+        grid.Add(file_sizer, 1, wx.EXPAND)
+        self.file_browse_btn.Bind(wx.EVT_BUTTON, self.OnBrowseFile)
         
         # Bus choice
         grid.Add(wx.StaticText(panel, label="Bus Assignment:"), 0, wx.ALIGN_CENTER_VERTICAL)
@@ -270,7 +283,7 @@ class AddEditSoundDialog(wx.Dialog):
             
             # Show filename or path
             filename = sound_data.get("filename", "")
-            self.file_picker.SetPath(filename)
+            self.file_txt.SetValue(filename)
             
             # Select bus
             sound_bus_id = sound_data.get("bus_id")
@@ -304,7 +317,7 @@ class AddEditSoundDialog(wx.Dialog):
 
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
-        filepath = self.file_picker.GetPath().strip()
+        filepath = self.file_txt.GetValue().strip()
         hotkey = self.hotkey_txt.GetValue().strip()
         
         if not name:
@@ -314,7 +327,7 @@ class AddEditSoundDialog(wx.Dialog):
             
         if not filepath:
             wx.MessageBox("Please select an audio file.", "Error", wx.OK | wx.ICON_ERROR)
-            self.file_picker.SetFocus()
+            self.file_txt.SetFocus()
             return
             
         if hotkey and self.existing_sounds:
@@ -332,6 +345,22 @@ class AddEditSoundDialog(wx.Dialog):
             
         event.Skip()
 
+    def OnBrowseFile(self, event):
+        default_file = self.file_txt.GetValue().strip()
+        default_dir = ""
+        if default_file and os.path.exists(os.path.dirname(default_file)):
+            default_dir = os.path.dirname(default_file)
+        dlg = wx.FileDialog(
+            self,
+            message="Select Audio File",
+            defaultDir=default_dir,
+            wildcard="Audio files (*.mp3;*.wav;*.ogg;*.flac;*.aiff)|*.mp3;*.wav;*.ogg;*.flac;*.aiff",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            self.file_txt.SetValue(dlg.GetPath())
+        dlg.Destroy()
+
     def GetSoundData(self):
         """Returns the updated sound metadata dictionary."""
         bus_idx = self.bus_choice.GetSelection()
@@ -341,11 +370,12 @@ class AddEditSoundDialog(wx.Dialog):
         
         scenarios = self.sound_data.get("scenarios", []) if self.sound_data else []
         
+        filepath_full = self.file_txt.GetValue().strip()
         return {
             "id": sound_id,
             "name": self.name_txt.GetValue().strip(),
-            "filepath_full": self.file_picker.GetPath().strip(),  # Main frame will use this to copy
-            "filename": os.path.basename(self.file_picker.GetPath().strip()),
+            "filepath_full": filepath_full,  # Main frame will use this to copy
+            "filename": os.path.basename(filepath_full),
             "bus_id": bus_id,
             "hotkey": self.hotkey_txt.GetValue().strip(),
             "default_scenario": {
@@ -366,7 +396,7 @@ class AddEditBusDialog(wx.Dialog):
         super().__init__(parent, title=title, size=(400, 260))
         
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(3, 2, 12, 10)
+        grid = wx.FlexGridSizer(0, 2, 12, 10)
         grid.AddGrowableCol(1, 1)
         
         # Name field
@@ -559,7 +589,7 @@ class AddEditScenarioDialog(wx.Dialog):
         
         self.buses = buses
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(7, 2, 10, 10)
+        grid = wx.FlexGridSizer(0, 2, 10, 10)
         grid.AddGrowableCol(1, 1)
         
         # Scenario Name
@@ -822,3 +852,131 @@ class EditScenariosDialog(wx.Dialog):
             "Default Updated",
             wx.OK | wx.ICON_INFORMATION
         )
+
+
+class ProjectManagerDialog(wx.Dialog):
+    """Dialog to select, open, manage, and delete projects."""
+    def __init__(self, parent, recent_projects, last_project_path=None):
+        super().__init__(parent, title="Project Manager", size=(600, 400))
+        self.recent_projects = list(recent_projects)  # Copy
+        self.selected_project_path = None
+        self.action = None  # 'open', 'create', 'browse', 'exit'
+        
+        panel = wx.Panel(self)
+        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Left Side: Projects List
+        list_sizer = wx.BoxSizer(wx.VERTICAL)
+        list_lbl = wx.StaticText(panel, label="Recent Projects:")
+        self.projects_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.projects_list.SetName("Recent Projects List")
+        self.projects_list.InsertColumn(0, "Name", width=180)
+        self.projects_list.InsertColumn(1, "Path", width=250)
+        
+        list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
+        list_sizer.Add(self.projects_list, 1, wx.EXPAND)
+        
+        # Right Side: Buttons
+        btn_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.open_btn = wx.Button(panel, label="&Open Selected")
+        self.new_btn = wx.Button(panel, label="&New Project...")
+        self.browse_btn = wx.Button(panel, label="&Browse Other...")
+        self.remove_btn = wx.Button(panel, label="&Remove from List")
+        self.delete_btn = wx.Button(panel, label="&Delete Project Files...")
+        self.exit_btn = wx.Button(panel, label="&Exit App")
+        
+        btn_sizer.Add(self.open_btn, 0, wx.EXPAND | wx.BOTTOM, 8)
+        btn_sizer.Add(self.new_btn, 0, wx.EXPAND | wx.BOTTOM, 8)
+        btn_sizer.Add(self.browse_btn, 0, wx.EXPAND | wx.BOTTOM, 20)
+        btn_sizer.Add(self.remove_btn, 0, wx.EXPAND | wx.BOTTOM, 8)
+        btn_sizer.Add(self.delete_btn, 0, wx.EXPAND | wx.BOTTOM, 20)
+        btn_sizer.Add(self.exit_btn, 0, wx.EXPAND)
+        
+        # Bind events
+        self.open_btn.Bind(wx.EVT_BUTTON, self.OnOpen)
+        self.new_btn.Bind(wx.EVT_BUTTON, self.OnNew)
+        self.browse_btn.Bind(wx.EVT_BUTTON, self.OnBrowse)
+        self.remove_btn.Bind(wx.EVT_BUTTON, self.OnRemove)
+        self.delete_btn.Bind(wx.EVT_BUTTON, self.OnDelete)
+        self.exit_btn.Bind(wx.EVT_BUTTON, self.OnExitBtn)
+        self.projects_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnOpen)
+        
+        # Layout
+        panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.ALL, 15)
+        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 15)
+        panel.SetSizer(panel_sizer)
+        
+        main_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(main_sizer)
+        
+        self.PopulateList(last_project_path)
+        self.projects_list.SetFocus()
+        self.CenterOnParent()
+        
+    def PopulateList(self, last_project_path=None):
+        self.projects_list.DeleteAllItems()
+        select_idx = 0
+        for idx, proj in enumerate(self.recent_projects):
+            self.projects_list.InsertItem(idx, proj["name"])
+            self.projects_list.SetItem(idx, 1, proj["path"])
+            self.projects_list.SetItemPtrData(idx, idx)
+            if last_project_path and proj["path"] == last_project_path:
+                select_idx = idx
+                
+        if self.recent_projects:
+            self.projects_list.Select(select_idx)
+            self.projects_list.Focus(select_idx)
+
+    def OnOpen(self, event):
+        sel = self.projects_list.GetFirstSelected()
+        if sel == wx.NOT_FOUND:
+            wx.MessageBox("Please select a project from the list.", "Info", wx.OK | wx.ICON_INFORMATION)
+            return
+        idx = self.projects_list.GetItemData(sel)
+        self.selected_project_path = self.recent_projects[idx]["path"]
+        self.action = 'open'
+        self.EndModal(wx.ID_OK)
+        
+    def OnNew(self, event):
+        self.action = 'create'
+        self.EndModal(wx.ID_OK)
+        
+    def OnBrowse(self, event):
+        self.action = 'browse'
+        self.EndModal(wx.ID_OK)
+        
+    def OnRemove(self, event):
+        sel = self.projects_list.GetFirstSelected()
+        if sel == wx.NOT_FOUND:
+            return
+        idx = self.projects_list.GetItemData(sel)
+        self.recent_projects.pop(idx)
+        self.PopulateList()
+        
+    def OnDelete(self, event):
+        sel = self.projects_list.GetFirstSelected()
+        if sel == wx.NOT_FOUND:
+            return
+        idx = self.projects_list.GetItemData(sel)
+        proj = self.recent_projects[idx]
+        
+        confirm = wx.MessageBox(
+            f"Are you sure you want to delete all files for project '{proj['name']}'?\n"
+            f"This will permanently delete the folder:\n{proj['path']}\n\nTHIS ACTION CANNOT BE UNDONE.",
+            "Confirm Project Deletion",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING
+        )
+        if confirm == wx.YES:
+            try:
+                import shutil
+                shutil.rmtree(proj["path"], ignore_errors=True)
+                self.recent_projects.pop(idx)
+                self.PopulateList()
+                Speech.speak(f"Deleted project {proj['name']}")
+            except Exception as e:
+                wx.MessageBox(f"Failed to delete directory:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+                
+    def OnExitBtn(self, event):
+        self.action = 'exit'
+        self.EndModal(wx.ID_CANCEL)
