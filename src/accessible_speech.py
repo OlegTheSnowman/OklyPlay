@@ -12,8 +12,7 @@ class Speech:
     @classmethod
     def speak(cls, text, interrupt=True):
         """Speak text. If interrupt=True, cancel any previous speech first."""
-        print(f"[Speech Output] {text}")
         try:
             cls.get().speak(text, interrupt=interrupt)
-        except Exception as e:
-            print(f"[Speech Error] Failed to speak: {e}")
+        except Exception:
+            pass
