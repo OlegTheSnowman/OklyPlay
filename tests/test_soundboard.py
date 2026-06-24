@@ -610,5 +610,54 @@ class TestProjectManagerDialogActions(unittest.TestCase):
         dlg.Destroy()
 
 
+class TestHotkeyCtrl(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
+    def test_hotkey_ctrl_captures_keys(self):
+        frame = wx.Frame(None)
+        ctrl = ui_dialogs.HotkeyCtrl(frame)
+        
+        # 1. Test ignoring modifiers when pressed by themselves
+        event_mod = MagicMock()
+        event_mod.GetKeyCode.return_value = wx.WXK_CONTROL
+        event_mod.GetModifiers.return_value = wx.MOD_CONTROL
+        
+        ctrl.OnKeyDown(event_mod)
+        self.assertEqual(ctrl.GetValue(), "")
+        
+        # 2. Test Ctrl + Shift + A
+        event_combo = MagicMock()
+        event_combo.GetKeyCode.return_value = ord('A')
+        event_combo.GetModifiers.return_value = wx.MOD_CONTROL | wx.MOD_SHIFT
+        
+        ctrl.OnKeyDown(event_combo)
+        self.assertEqual(ctrl.GetValue(), "Ctrl+Shift+A")
+        
+        # 3. Test Escape
+        event_esc = MagicMock()
+        event_esc.GetKeyCode.return_value = wx.WXK_ESCAPE
+        event_esc.GetModifiers.return_value = 0
+        
+        ctrl.OnKeyDown(event_esc)
+        self.assertEqual(ctrl.GetValue(), "Escape")
+
+        # 4. Test Backspace clears
+        event_back = MagicMock()
+        event_back.GetKeyCode.return_value = wx.WXK_BACK
+        event_back.GetModifiers.return_value = 0
+        
+        ctrl.OnKeyDown(event_back)
+        self.assertEqual(ctrl.GetValue(), "")
+        
+        frame.Destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
+
