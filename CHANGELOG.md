@@ -26,8 +26,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Quick Sound Hotkey (`Alt+K`)** - Press `Alt+K` while a sound is selected to assign or change its hotkey without opening the full Edit dialog.
 - **Exclusive Bus Crossfading & Editor** - Automatically crossfade between exclusive buses.
   - Playing a sound on an exclusive bus now fades out all channels on other exclusive buses using a configurable crossfade duration.
+  - The new sound now fades in using the target bus's crossfade duration as its default fade-in.
   - Layered buses remain unaffected and continue playing on top.
   - A **Crossfade (ms)** field has been added to the bus editor (`AddEditBusDialog`) and the bus management list (`ManageBusesDialog`).
+- **Track-to-Track Crossfading** - Looping bus playlists can now crossfade between tracks symmetrically.
+  - Plays the next track early (at crossfade remaining duration) and fades out the current track while fading in the new track.
+  - A **Track Crossfade (ms)** field has been added to the bus editor (`AddEditBusDialog`) and the bus management list (`ManageBusesDialog`).
 
 ### Changed
 
