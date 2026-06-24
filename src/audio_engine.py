@@ -178,6 +178,9 @@ class AudioEngine:
         self._loaded_sounds = {}    # Cache path -> LoadedSound
         self._master_volume = 1.0
         self._bus_volumes = {}      # bus_id -> volume float
+        self._bus_duck_factors = {} # bus_id -> duck factor float (0.0 - 1.0)
+        self._bus_duckable = {}     # bus_id -> bool
+        self._bus_current_duck_factors = {} # bus_id -> transient current duck factor
         
         self._open_stream()
 
@@ -216,11 +219,54 @@ class AudioEngine:
         # Take a snapshot of the active channels to avoid lock contention
         channels_snapshot = self._active_channels
         
+        # Determine target duck factors for all buses first
+        target_ducks = {}
+        for bus_id in list(self._bus_volumes.keys()):
+            target_duck = 1.0
+            if self._bus_duckable.get(bus_id, False):
+                for other_ch in channels_snapshot:
+                    if other_ch.is_done:
+                        continue
+                    if other_ch.bus_id != bus_id:
+                        factor = self._bus_duck_factors.get(other_ch.bus_id, 1.0)
+                        if factor < target_duck:
+                            target_duck = factor
+            target_ducks[bus_id] = target_duck
+
+        # Compute ducking envelope for each bus
+        bus_duck_envelopes = {}
+        for bus_id, target_duck in target_ducks.items():
+            d_start = self._bus_current_duck_factors.get(bus_id, 1.0)
+            if target_duck < d_start:
+                # Attack: ramp down to target_duck (e.g. 150ms)
+                max_change = frames / (0.15 * self.sample_rate)
+                d_end = max(target_duck, d_start - max_change)
+            elif target_duck > d_start:
+                # Release: ramp up to target_duck (e.g. 400ms)
+                max_change = frames / (0.4 * self.sample_rate)
+                d_end = min(target_duck, d_start + max_change)
+            else:
+                d_end = target_duck
+            
+            self._bus_current_duck_factors[bus_id] = d_end
+            
+            if d_start == d_end == 1.0:
+                bus_duck_envelopes[bus_id] = None
+            else:
+                bus_duck_envelopes[bus_id] = np.linspace(d_start, d_end, frames, dtype=np.float32)
+
         for ch in channels_snapshot:
             if ch.is_done:
                 continue
             rendered = ch.render(frames)
             bus_vol = self._bus_volumes.get(ch.bus_id, 1.0)
+            
+            # Apply ducking envelope if present
+            envelope = bus_duck_envelopes.get(ch.bus_id)
+            if envelope is not None:
+                n = len(rendered)
+                rendered = rendered * envelope[:n, np.newaxis]
+                
             outdata[:len(rendered)] += rendered * (bus_vol * self._master_volume)
             
         np.clip(outdata, -1.0, 1.0, out=outdata)
@@ -287,6 +333,21 @@ class AudioEngine:
     def set_bus_volume(self, bus_id, volume):
         """Sets the volume multiplier for a specific bus."""
         self._bus_volumes[bus_id] = max(0.0, min(1.0, float(volume)))
+
+    def set_bus_duck_factor(self, bus_id, duck_factor):
+        """Sets the duck factor multiplier for a specific bus (0.0 to 1.0)."""
+        self._bus_duck_factors[bus_id] = max(0.0, min(1.0, float(duck_factor)))
+
+    def set_bus_duckable(self, bus_id, duckable):
+        """Sets whether a specific bus is subject to ducking."""
+        self._bus_duckable[bus_id] = bool(duckable)
+
+    def clear_buses_config(self):
+        """Clears all bus volume and ducking settings."""
+        self._bus_volumes.clear()
+        self._bus_duck_factors.clear()
+        self._bus_duckable.clear()
+        self._bus_current_duck_factors.clear()
 
     def get_active_channels_count(self):
         """Returns the number of active, non-completed channels."""
