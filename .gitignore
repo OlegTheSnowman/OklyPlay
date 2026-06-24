@@ -9,3 +9,6 @@ debug.log
 build/
 dist/
 *.spec
+
+# Agent config
+.agents/

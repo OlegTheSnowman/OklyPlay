@@ -6,6 +6,7 @@ from accessible_speech import Speech
 from audio_engine import AudioEngine
 import project_manager
 import ui_dialogs
+from version import __version__
 
 # Custom wx IDs
 ID_NEW_PROJECT = wx.ID_NEW
@@ -920,7 +921,7 @@ class MainFrame(wx.Frame):
     # --- Help & About Dialog ---
     def OnAbout(self, event):
         wx.MessageBox(
-            "OklyPlay Soundboard\nVersion 1.0\n\nA screenreader-accessible soundboard for streamers.\n"
+            f"OklyPlay Soundboard\nVersion {__version__}\n\nA screenreader-accessible soundboard for streamers.\n"
             "Built with wxPython, sounddevice, soundfile, numpy, and accessible_output2.",
             "About OklyPlay",
             wx.OK | wx.ICON_INFORMATION
