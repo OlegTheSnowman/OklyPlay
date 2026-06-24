@@ -12,7 +12,13 @@ Built with **wxPython**, **sounddevice**, **soundfile**, **numpy**, and **access
 - **Multi-Bus Mixer**: Group sounds into separate audio buses.
   - *Layered Mode*: Play multiple sounds at the same time.
   - *Exclusive Mode*: Playing a sound automatically stops any other sound playing on that same bus.
-- **Custom Hotkeys**: Trigger sounds instantly at any time using system-wide hotkeys. Supports key combinations like `Ctrl`, `Shift`, `Alt`, and functional keys (e.g., `F1`-`F12`, `Space`, `Enter`).
+- **Sound Manager (`Alt+S`)**: A dedicated view for managing all project sounds at once.
+  - Import multiple audio files in bulk — sounds start unassigned, so you can organise them at your own pace.
+  - Press `Ctrl+1`–`Ctrl+9` to instantly move the selected sound to the matching bus.
+  - `Ctrl+U` clears a bus assignment; `F2` edits; `Delete` removes.
+- **Custom Hotkeys**: Trigger sounds instantly at any time using system-wide hotkeys. Supports key combinations like `Ctrl`, `Shift`, `Alt`, and functional keys (e.g., `F1`–`F12`, `Space`, `Enter`).
+  - **Quick Hotkey (`Alt+K`)**: Assign or change a sound's hotkey on the fly without opening the full editor.
+- **Bus Loop Playback**: Assign a hotkey to an entire bus to shuffle and loop all its sounds continuously — perfect for background music or ambient playlists.
 - **Scenarios**: Create different playback configurations (overrides) for the same sound. Control:
   - Individual sound volume overrides
   - Linear fade-in and fade-out duration (in milliseconds)
@@ -32,12 +38,18 @@ OklyPlay is designed for rapid keyboard control. Here is a quick reference:
 |--------|----------|
 | **Play Selected Sound** | `Space` |
 | **Stop Selected Sound** | `Delete` |
-| **Stop Current Bus** | `Ctrl + Shift + S` |
-| **Stop All Sounds** | `Escape` |
+| **Stop Current Bus** | `Escape` |
+| **Stop All Sounds** | `Alt + Escape` |
 | **Switch Active Bus** | `Ctrl + 1` through `Ctrl + 9` |
-| **Adjust Master Volume** | `Ctrl + Up Arrow` / `Ctrl + Down Arrow` |
-| **Adjust Selected Bus Volume** | `Shift + Up Arrow` / `Shift + Down Arrow` |
-| **Project Manager** | `Ctrl + P` |
+| **Adjust Bus Volume** | `Ctrl + Up Arrow` / `Ctrl + Down Arrow` |
+| **Adjust Master Volume** | `Ctrl + Shift + Up Arrow` / `Ctrl + Shift + Down Arrow` |
+| **Sound Manager** | `Alt + S` |
+| **Import Sounds (in Manager)** | `Ctrl + I` |
+| **Assign to Bus N (in Manager)** | `Ctrl + 1` through `Ctrl + 9` |
+| **Unassign Bus (in Manager)** | `Ctrl + U` |
+| **Quick Hotkey** | `Alt + K` |
+| **Edit Sound** | `F2` |
+| **Project Manager** | `Ctrl + M` |
 | **Manage Buses** | `Ctrl + B` |
 | **Preferences / Device Setup** | `Ctrl + Alt + P` |
 | **Help & Shortcuts Dialog** | `Ctrl + H` |
