@@ -818,18 +818,30 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         dlg.Destroy()
 
     def test_add_edit_bus_dialog_hotkey(self):
-        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S", "crossfade_ms": 300}
+        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S", "crossfade_ms": 300, "hotkey_action": "single_sequential"}
         dlg = ui_dialogs.AddEditBusDialog(None, bus_data)
         self.assertEqual(dlg.hotkey_txt.GetValue(), "Ctrl+Alt+S")
         self.assertEqual(dlg.hotkey_txt.GetAccessible().GetName(0)[1], "Bus Hotkey")
         self.assertEqual(dlg.crossfade_spin.GetValue(), 300)
+        self.assertEqual(dlg.action_choice.GetSelection(), 3)  # Single (Sequential)
         
-        # Test GetBusData includes hotkey and crossfade_ms
+        # Test GetBusData includes hotkey, crossfade_ms, and hotkey_action
         dlg.hotkey_txt.SetValue("F9")
         dlg.crossfade_spin.SetValue(750)
+        dlg.action_choice.SetSelection(1)  # Loop (Sequential)
         data = dlg.GetBusData()
         self.assertEqual(data["hotkey"], "F9")
         self.assertEqual(data["crossfade_ms"], 750)
+        self.assertEqual(data["hotkey_action"], "loop_sequential")
+        
+        # Test Mode choice recommendation toggling
+        dlg.mode_choice.SetSelection(0)  # exclusive
+        # Emulate choice event
+        event = wx.CommandEvent(wx.wxEVT_CHOICE)
+        dlg.OnModeChanged(event)
+        self.assertEqual(dlg.action_choice.GetSelection(), 0)  # Loop (Shuffle)
+        self.assertEqual(dlg.crossfade_spin.GetValue(), 500)
+        
         dlg.Destroy()
 
     @patch('wx.MessageBox', return_value=wx.OK)
@@ -962,6 +974,74 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         args, kwargs = mock_play.call_args
         self.assertEqual(kwargs.get("crossfade_ms"), 350)
         self.assertIn(exclusive_bus["id"], kwargs.get("exclusive_bus_ids"))
+        frame.Destroy()
+
+    def test_mainframe_hotkey_actions_flow(self):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        bus_id = frame.project_data["buses"][0]["id"]
+        bus = frame.GetBusById(bus_id)
+        
+        # Add 3 sounds to the bus
+        frame.project_data["sounds"] = []
+        sounds = []
+        for i in range(3):
+            sound_data = {
+                "id": f"sound-{i}",
+                "name": f"Sound {i}",
+                "filename": f"sound_{i}.wav",
+                "bus_id": bus_id,
+                "hotkey": "",
+                "default_scenario": {"volume": 1.0, "fade_in_ms": 0, "fade_out_ms": 0, "speed": 1.0, "loop": False},
+                "scenarios": [],
+                "missing": False
+            }
+            frame.project_data["sounds"].append(sound_data)
+            sounds.append(sound_data)
+            
+        # Mock PlaySound to return a mock channel
+        mock_channel = MagicMock()
+        mock_channel._fading_out = False
+        frame.PlaySound = MagicMock(return_value=mock_channel)
+        
+        # Test 1: Single (Shuffle)
+        bus["hotkey_action"] = "single_shuffle"
+        frame.ToggleBusPlaylist(bus_id)
+        # Should play exactly one sound
+        frame.PlaySound.assert_called_once()
+        self.assertNotIn(bus_id, frame.active_bus_playlists)
+        
+        # Test 2: Single (Sequential)
+        frame.PlaySound.reset_mock()
+        bus["hotkey_action"] = "single_sequential"
+        frame.bus_sequential_indices[bus_id] = 0
+        
+        # Call first time (plays index 0)
+        frame.ToggleBusPlaylist(bus_id)
+        frame.PlaySound.assert_called_with(sounds[0], sounds[0]["default_scenario"])
+        self.assertEqual(frame.bus_sequential_indices[bus_id], 1)
+        
+        # Call second time (plays index 1)
+        frame.ToggleBusPlaylist(bus_id)
+        frame.PlaySound.assert_called_with(sounds[1], sounds[1]["default_scenario"])
+        self.assertEqual(frame.bus_sequential_indices[bus_id], 2)
+        
+        # Test 3: Loop (Sequential)
+        frame.PlaySound.reset_mock()
+        bus["hotkey_action"] = "loop_sequential"
+        frame.active_bus_playlists = {}
+        
+        frame.ToggleBusPlaylist(bus_id)
+        frame.PlaySound.assert_called_with(sounds[0], sounds[0]["default_scenario"])
+        self.assertTrue(frame.active_bus_playlists[bus_id]["active"])
+        self.assertEqual(frame.active_bus_playlists[bus_id]["index"], 0)
+        
+        # Advance next (should play index 1)
+        frame.PlayNextSoundInBusPlaylist(bus_id)
+        frame.PlaySound.assert_called_with(sounds[1], sounds[1]["default_scenario"])
+        self.assertEqual(frame.active_bus_playlists[bus_id]["index"], 1)
+        
         frame.Destroy()
 
 
