@@ -869,7 +869,7 @@ class AddEditBusDialog(wx.Dialog):
     """Dialog to create or edit a bus's name, mode, and volume."""
     def __init__(self, parent, bus_data=None):
         title = "Edit Bus" if bus_data else "Add Bus"
-        super().__init__(parent, title=title, size=(400, 310))
+        super().__init__(parent, title=title, size=(400, 350))
         self.bus_data = bus_data
         
         panel = wx.Panel(self)
@@ -900,6 +900,12 @@ class AddEditBusDialog(wx.Dialog):
         self.hotkey_txt = HotkeyCtrl(panel)
         label_control(self.hotkey_txt, "Bus Hotkey")
         grid.Add(self.hotkey_txt, 1, wx.EXPAND)
+
+        # Crossfade field
+        grid.Add(wx.StaticText(panel, label="Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.crossfade_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=500)
+        label_control(self.crossfade_spin, "Crossfade milliseconds")
+        grid.Add(self.crossfade_spin, 1, wx.EXPAND)
         
         if bus_data:
             self.name_txt.SetValue(bus_data.get("name", ""))
@@ -908,6 +914,7 @@ class AddEditBusDialog(wx.Dialog):
             self.vol_slider.SetValue(int(bus_data.get("volume", 1.0) * 100))
             self.hotkey_txt.SetValue(bus_data.get("hotkey", ""))
             self.hotkey_txt.hotkey_value = bus_data.get("hotkey", "")
+            self.crossfade_spin.SetValue(bus_data.get("crossfade_ms", 500 if mode == "exclusive" else 0))
             
         panel_sizer = wx.BoxSizer(wx.VERTICAL)
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
@@ -969,14 +976,15 @@ class AddEditBusDialog(wx.Dialog):
             "name": self.name_txt.GetValue().strip(),
             "mode": sel_mode,
             "volume": self.vol_slider.GetValue() / 100.0,
-            "hotkey": self.hotkey_txt.GetValue().strip()
+            "hotkey": self.hotkey_txt.GetValue().strip(),
+            "crossfade_ms": self.crossfade_spin.GetValue()
         }
  
  
 class ManageBusesDialog(wx.Dialog):
     """Dialog to list, add, edit, and remove project buses."""
     def __init__(self, parent, project_data):
-        super().__init__(parent, title="Manage Buses", size=(500, 350))
+        super().__init__(parent, title="Manage Buses", size=(600, 350))
         self.project_data = project_data  # Direct reference to mutate in place
         
         panel = wx.Panel(self)
@@ -991,6 +999,7 @@ class ManageBusesDialog(wx.Dialog):
         self.bus_list.InsertColumn(1, "Mode", width=90)
         self.bus_list.InsertColumn(2, "Volume", width=70)
         self.bus_list.InsertColumn(3, "Hotkey", width=100)
+        self.bus_list.InsertColumn(4, "Crossfade", width=100)
         
         list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
         list_sizer.Add(self.bus_list, 1, wx.EXPAND)
@@ -1031,6 +1040,7 @@ class ManageBusesDialog(wx.Dialog):
             self.bus_list.SetItem(idx, 1, bus.get("mode", "layered"))
             self.bus_list.SetItem(idx, 2, f"{int(bus.get('volume', 1.0) * 100)}%")
             self.bus_list.SetItem(idx, 3, bus.get("hotkey", ""))
+            self.bus_list.SetItem(idx, 4, f"{bus.get('crossfade_ms', 500 if bus.get('mode') == 'exclusive' else 0)} ms")
             # Associate bus dict to index
             self.bus_list.SetItemData(idx, idx)
 

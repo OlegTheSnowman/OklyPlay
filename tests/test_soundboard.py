@@ -795,15 +795,18 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         dlg.Destroy()
 
     def test_add_edit_bus_dialog_hotkey(self):
-        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S"}
+        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S", "crossfade_ms": 300}
         dlg = ui_dialogs.AddEditBusDialog(None, bus_data)
         self.assertEqual(dlg.hotkey_txt.GetValue(), "Ctrl+Alt+S")
         self.assertEqual(dlg.hotkey_txt.GetAccessible().GetName(0)[1], "Bus Hotkey")
+        self.assertEqual(dlg.crossfade_spin.GetValue(), 300)
         
-        # Test GetBusData includes hotkey
+        # Test GetBusData includes hotkey and crossfade_ms
         dlg.hotkey_txt.SetValue("F9")
+        dlg.crossfade_spin.SetValue(750)
         data = dlg.GetBusData()
         self.assertEqual(data["hotkey"], "F9")
+        self.assertEqual(data["crossfade_ms"], 750)
         dlg.Destroy()
 
     @patch('wx.MessageBox', return_value=wx.OK)
