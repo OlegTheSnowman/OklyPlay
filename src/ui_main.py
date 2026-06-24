@@ -27,6 +27,7 @@ ID_BUS_VOL_UP = wx.ID_HIGHEST + 10
 ID_BUS_VOL_DOWN = wx.ID_HIGHEST + 11
 ID_MASTER_VOL_UP = wx.ID_HIGHEST + 12
 ID_MASTER_VOL_DOWN = wx.ID_HIGHEST + 13
+ID_MANAGE_PROJECTS = wx.ID_HIGHEST + 14
 
 ID_BUS_BASE = wx.ID_HIGHEST + 100  # ID_BUS_BASE + 1 to 9
 ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
@@ -114,6 +115,7 @@ class MainFrame(wx.Frame):
         file_menu.Append(ID_NEW_PROJECT, "&New Project...\tCtrl+N")
         file_menu.Append(ID_OPEN_PROJECT, "&Open Project...\tCtrl+O")
         file_menu.Append(ID_SAVE_PROJECT, "&Save Project\tCtrl+S")
+        file_menu.Append(ID_MANAGE_PROJECTS, "&Manage Projects...\tCtrl+M")
         file_menu.AppendSeparator()
         file_menu.Append(ID_EXPORT_PROJECT, "&Export Project (Zip)...")
         file_menu.Append(ID_IMPORT_PROJECT, "&Import Project (Zip)...")
@@ -171,6 +173,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnNewProject, id=ID_NEW_PROJECT)
         self.Bind(wx.EVT_MENU, self.OnOpenProject, id=ID_OPEN_PROJECT)
         self.Bind(wx.EVT_MENU, self.OnSaveProject, id=ID_SAVE_PROJECT)
+        self.Bind(wx.EVT_MENU, self.OnManageProjects, id=ID_MANAGE_PROJECTS)
         self.Bind(wx.EVT_MENU, self.OnExportProject, id=ID_EXPORT_PROJECT)
         self.Bind(wx.EVT_MENU, self.OnImportProject, id=ID_IMPORT_PROJECT)
         self.Bind(wx.EVT_MENU, self.OnPreferences, id=wx.ID_PREFERENCES)
@@ -200,38 +203,28 @@ class MainFrame(wx.Frame):
         for i in range(1, 10):
             self.Bind(wx.EVT_MENU, self.OnPlayScenarioHotkey, id=ID_SCENARIO_BASE + i)
 
-    def LoadSettingsAndLastProject(self):
+    def LoadSettings(self):
         sp = wx.StandardPaths.Get()
         user_data_dir = sp.GetUserDataDir()
         os.makedirs(user_data_dir, exist_ok=True)
         settings_path = os.path.join(user_data_dir, "settings.json")
         
-        project_to_load = None
+        self.settings = {}
         if os.path.exists(settings_path):
             try:
                 with open(settings_path, "r", encoding="utf-8") as f:
-                    settings = json.load(f)
-                    project_to_load = settings.get("last_project_path")
+                    self.settings = json.load(f)
             except Exception:
                 pass
                 
-        if project_to_load and os.path.exists(project_to_load):
-            self.LoadProject(project_to_load)
-        else:
-            # Welcome the user and prompt for New or Open
-            wx.CallAfter(self.PromptStartup)
-
-    def PromptStartup(self):
-        confirm = wx.MessageBox(
-            "Welcome to OklyPlay Soundboard!\nWould you like to open an existing project?\n"
-            "(Selecting 'No' will open the New Project dialog)",
-            "Startup Options",
-            wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION
-        )
-        if confirm == wx.YES:
-            self.OnOpenProject(None)
-        else:
-            self.OnNewProject(None)
+        if "recent_projects" not in self.settings:
+            self.settings["recent_projects"] = []
+            
+        # Clean up missing directories from recent list
+        self.settings["recent_projects"] = [
+            p for p in self.settings["recent_projects"]
+            if os.path.exists(p["path"])
+        ]
 
     def SaveSettings(self):
         sp = wx.StandardPaths.Get()
@@ -239,9 +232,47 @@ class MainFrame(wx.Frame):
         settings_path = os.path.join(user_data_dir, "settings.json")
         try:
             with open(settings_path, "w", encoding="utf-8") as f:
-                json.dump({"last_project_path": self.project_dir}, f, indent=2)
+                json.dump(self.settings, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
+
+    def LoadSettingsAndLastProject(self):
+        self.LoadSettings()
+        project_to_load = self.settings.get("last_project_path")
+        
+        if project_to_load and os.path.exists(project_to_load):
+            self.LoadProject(project_to_load)
+        else:
+            # Welcome the user and open the Project Selection dashboard
+            wx.CallAfter(self.OnManageProjects, None)
+
+    def OnManageProjects(self, event):
+        # Open ProjectManagerDialog
+        dlg = ui_dialogs.ProjectManagerDialog(
+            self,
+            self.settings.get("recent_projects", []),
+            self.settings.get("last_project_path")
+        )
+        res = dlg.ShowModal()
+        
+        # Save modifications to recent projects list
+        self.settings["recent_projects"] = dlg.recent_projects
+        self.SaveSettings()
+        
+        if res == wx.ID_OK:
+            action = dlg.action
+            if action == 'open' and dlg.selected_project_path:
+                self.LoadProject(dlg.selected_project_path)
+            elif action == 'create':
+                self.OnNewProject(None)
+            elif action == 'browse':
+                self.OnOpenProject(None)
+        else:
+            # Dialog cancelled or Exit App selected
+            if dlg.action == 'exit' or self.project_data is None:
+                self.Close()
+                
+        dlg.Destroy()
 
     def LoadProject(self, path):
         try:
@@ -271,7 +302,15 @@ class MainFrame(wx.Frame):
             # Rebuild keyboard shortcuts (accelerator table)
             self.RebuildAccelerators()
             
-            # Save settings for recent project auto-load
+            # Update settings
+            self.settings["last_project_path"] = path
+            recent = self.settings.get("recent_projects", [])
+            recent = [p for p in recent if p["path"] != path]
+            recent.insert(0, {
+                "name": self.project_data.get("name", "Unnamed"),
+                "path": path
+            })
+            self.settings["recent_projects"] = recent
             self.SaveSettings()
             
             Speech.speak(f"Project loaded: {self.project_data.get('name', 'Unnamed')}")
@@ -279,7 +318,15 @@ class MainFrame(wx.Frame):
             
         except Exception as e:
             wx.MessageBox(f"Failed to load project from {path}:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
-            self.PromptStartup()
+            if "recent_projects" in self.settings:
+                self.settings["recent_projects"] = [
+                    p for p in self.settings["recent_projects"]
+                    if p["path"] != path
+                ]
+            if self.settings.get("last_project_path") == path:
+                self.settings["last_project_path"] = None
+            self.SaveSettings()
+            wx.CallAfter(self.OnManageProjects, None)
 
     def RefreshBusesList(self):
         self.buses_list.Clear()
@@ -328,6 +375,7 @@ class MainFrame(wx.Frame):
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('N'), ID_NEW_PROJECT),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('O'), ID_OPEN_PROJECT),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('S'), ID_SAVE_PROJECT),
+            wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('M'), ID_MANAGE_PROJECTS),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('I'), ID_ADD_SOUND),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_F2, ID_EDIT_SOUND),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_DELETE, ID_REMOVE_SOUND),
