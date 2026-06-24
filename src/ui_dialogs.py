@@ -28,7 +28,7 @@ class HotkeyCtrl(wx.TextCtrl):
             return
 
         # Ignore modifier-only keypresses
-        if key_code in (wx.WXK_CONTROL, wx.WXK_SHIFT, wx.WXK_ALT, wx.WXK_WINDOWS):
+        if key_code in (wx.WXK_CONTROL, wx.WXK_SHIFT, wx.WXK_ALT, wx.WXK_WINDOWS_LEFT, wx.WXK_WINDOWS_RIGHT, wx.WXK_WINDOWS_MENU):
             event.Skip()
             return
 
