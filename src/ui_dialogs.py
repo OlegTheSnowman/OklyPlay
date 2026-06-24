@@ -2,6 +2,15 @@ import wx
 import os
 import uuid
 
+def create_dialog_buttons(panel, ok_label="OK", cancel_label="Cancel"):
+    """Creates OK and Cancel buttons with the panel as their parent to avoid sizer parent assert."""
+    btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+    ok_btn = wx.Button(panel, wx.ID_OK, ok_label)
+    cancel_btn = wx.Button(panel, wx.ID_CANCEL, cancel_label)
+    btn_sizer.Add(ok_btn, 0, wx.ALL, 5)
+    btn_sizer.Add(cancel_btn, 0, wx.ALL, 5)
+    return btn_sizer, ok_btn, cancel_btn
+
 class HotkeyCtrl(wx.TextCtrl):
     """Custom TextCtrl that captures keypresses and formats them as hotkey strings."""
     def __init__(self, parent, *args, **kwargs):
@@ -79,7 +88,9 @@ class NewProjectDialog(wx.Dialog):
         # Location field
         loc_lbl = wx.StaticText(panel, label="Location:")
         self.loc_picker = wx.DirPickerCtrl(panel, message="Choose project location")
+        self.loc_picker.SetName("Project Location")
         self.loc_picker.GetTextCtrl().SetName("Project Location")
+        self.loc_picker.GetPickerCtrl().SetName("Browse Project Location")
         grid.Add(loc_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.loc_picker, 1, wx.EXPAND)
         
@@ -87,17 +98,15 @@ class NewProjectDialog(wx.Dialog):
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
         
         # Standard buttons
-        btn_sizer = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-        # Bind validation to OK button
-        ok_btn = self.FindWindowById(wx.ID_OK)
-        if ok_btn:
-            ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
+        btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel, ok_label="Create")
+        ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
             
         panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
         panel.SetSizer(panel_sizer)
         
         main_sizer.Add(panel, 1, wx.EXPAND)
         self.SetSizer(main_sizer)
+        self.name_txt.SetFocus()  # Set focus on first field
         self.CenterOnParent()
 
     def OnOK(self, event):
@@ -161,10 +170,11 @@ class PreferencesDialog(wx.Dialog):
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
         
         # Buttons
-        btn_sizer = self.CreateButtonSizer(wx.OK | wx.CANCEL)
+        btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
         panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
         panel.SetSizer(panel_sizer)
         
+        self.device_choice.SetFocus()  # Set focus on first field
         self.CenterOnParent()
 
     def GetSelectedDeviceIndex(self):
@@ -204,7 +214,9 @@ class AddEditSoundDialog(wx.Dialog):
             message="Select Audio File",
             wildcard="Audio files (*.mp3;*.wav;*.ogg;*.flac;*.aiff)|*.mp3;*.wav;*.ogg;*.flac;*.aiff"
         )
+        self.file_picker.SetName("Audio File Path")
         self.file_picker.GetTextCtrl().SetName("Audio File Path")
+        self.file_picker.GetPickerCtrl().SetName("Browse Audio File")
         grid.Add(self.file_picker, 1, wx.EXPAND)
         
         # Bus choice
@@ -281,14 +293,13 @@ class AddEditSoundDialog(wx.Dialog):
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
         
         # Buttons
-        btn_sizer = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-        ok_btn = self.FindWindowById(wx.ID_OK)
-        if ok_btn:
-            ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
+        btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
+        ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
             
         panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
         panel.SetSizer(panel_sizer)
         
+        self.name_txt.SetFocus()  # Set focus on first field
         self.CenterOnParent()
 
     def OnOK(self, event):
@@ -387,14 +398,13 @@ class AddEditBusDialog(wx.Dialog):
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
         
         # Buttons
-        btn_sizer = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-        ok_btn = self.FindWindowById(wx.ID_OK)
-        if ok_btn:
-            ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
+        btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
+        ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
             
         panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
         panel.SetSizer(panel_sizer)
         
+        self.name_txt.SetFocus()  # Set focus on first field
         self.CenterOnParent()
 
     def OnOK(self, event):
@@ -616,14 +626,13 @@ class AddEditScenarioDialog(wx.Dialog):
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
         
         # Buttons
-        btn_sizer = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-        ok_btn = self.FindWindowById(wx.ID_OK)
-        if ok_btn:
-            ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
+        btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
+        ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
             
         panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
         panel.SetSizer(panel_sizer)
         
+        self.name_txt.SetFocus()  # Set focus on first field
         self.CenterOnParent()
 
     def OnOK(self, event):
