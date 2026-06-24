@@ -869,7 +869,7 @@ class AddEditBusDialog(wx.Dialog):
     """Dialog to create or edit a bus's name, mode, and volume."""
     def __init__(self, parent, bus_data=None):
         title = "Edit Bus" if bus_data else "Add Bus"
-        super().__init__(parent, title=title, size=(400, 350))
+        super().__init__(parent, title=title, size=(400, 390))
         self.bus_data = bus_data
         
         panel = wx.Panel(self)
@@ -888,6 +888,7 @@ class AddEditBusDialog(wx.Dialog):
         label_control(self.mode_choice, "Playback Mode")
         grid.Add(self.mode_choice, 1, wx.EXPAND)
         self.mode_choice.SetSelection(1)  # Default layered
+        self.mode_choice.Bind(wx.EVT_CHOICE, self.OnModeChanged)
         
         # Volume slider
         grid.Add(wx.StaticText(panel, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
@@ -906,6 +907,16 @@ class AddEditBusDialog(wx.Dialog):
         self.crossfade_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=500)
         label_control(self.crossfade_spin, "Crossfade milliseconds")
         grid.Add(self.crossfade_spin, 1, wx.EXPAND)
+
+        # Hotkey Action choice
+        grid.Add(wx.StaticText(panel, label="Hotkey Action:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.action_choices = ["Loop (Shuffle)", "Loop (Sequential)", "Single (Shuffle)", "Single (Sequential)"]
+        self.action_choice = wx.Choice(panel, choices=self.action_choices)
+        label_control(self.action_choice, "Hotkey Action")
+        grid.Add(self.action_choice, 1, wx.EXPAND)
+        self.action_choice.SetSelection(2)  # Default Single (Shuffle) for layered
+        
+        self.action_mapping = ["loop_shuffle", "loop_sequential", "single_shuffle", "single_sequential"]
         
         if bus_data:
             self.name_txt.SetValue(bus_data.get("name", ""))
@@ -915,6 +926,13 @@ class AddEditBusDialog(wx.Dialog):
             self.hotkey_txt.SetValue(bus_data.get("hotkey", ""))
             self.hotkey_txt.hotkey_value = bus_data.get("hotkey", "")
             self.crossfade_spin.SetValue(bus_data.get("crossfade_ms", 500 if mode == "exclusive" else 0))
+            
+            action = bus_data.get("hotkey_action", "loop_shuffle" if mode == "exclusive" else "single_shuffle")
+            try:
+                action_idx = self.action_mapping.index(action)
+                self.action_choice.SetSelection(action_idx)
+            except ValueError:
+                self.action_choice.SetSelection(0 if mode == "exclusive" else 2)
             
         panel_sizer = wx.BoxSizer(wx.VERTICAL)
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
@@ -970,21 +988,33 @@ class AddEditBusDialog(wx.Dialog):
                         return
         event.Skip()
  
+    def OnModeChanged(self, event):
+        sel = self.mode_choice.GetSelection()
+        if sel == 0:  # exclusive
+            self.action_choice.SetSelection(0)  # Loop (Shuffle)
+            self.crossfade_spin.SetValue(500)
+        else:  # layered
+            self.action_choice.SetSelection(2)  # Single (Shuffle)
+            self.crossfade_spin.SetValue(0)
+
     def GetBusData(self):
         sel_mode = "exclusive" if self.mode_choice.GetSelection() == 0 else "layered"
+        action_idx = self.action_choice.GetSelection()
+        hotkey_action = self.action_mapping[action_idx] if action_idx != wx.NOT_FOUND else "single_shuffle"
         return {
             "name": self.name_txt.GetValue().strip(),
             "mode": sel_mode,
             "volume": self.vol_slider.GetValue() / 100.0,
             "hotkey": self.hotkey_txt.GetValue().strip(),
-            "crossfade_ms": self.crossfade_spin.GetValue()
+            "crossfade_ms": self.crossfade_spin.GetValue(),
+            "hotkey_action": hotkey_action
         }
  
  
 class ManageBusesDialog(wx.Dialog):
     """Dialog to list, add, edit, and remove project buses."""
     def __init__(self, parent, project_data):
-        super().__init__(parent, title="Manage Buses", size=(600, 350))
+        super().__init__(parent, title="Manage Buses", size=(720, 350))
         self.project_data = project_data  # Direct reference to mutate in place
         
         panel = wx.Panel(self)
@@ -995,11 +1025,12 @@ class ManageBusesDialog(wx.Dialog):
         list_lbl = wx.StaticText(panel, label="Buses:")
         self.bus_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.bus_list, "Buses List")
-        self.bus_list.InsertColumn(0, "Name", width=140)
-        self.bus_list.InsertColumn(1, "Mode", width=90)
-        self.bus_list.InsertColumn(2, "Volume", width=70)
-        self.bus_list.InsertColumn(3, "Hotkey", width=100)
-        self.bus_list.InsertColumn(4, "Crossfade", width=100)
+        self.bus_list.InsertColumn(0, "Name", width=120)
+        self.bus_list.InsertColumn(1, "Mode", width=80)
+        self.bus_list.InsertColumn(2, "Volume", width=60)
+        self.bus_list.InsertColumn(3, "Hotkey", width=90)
+        self.bus_list.InsertColumn(4, "Crossfade", width=90)
+        self.bus_list.InsertColumn(5, "Action", width=140)
         
         list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
         list_sizer.Add(self.bus_list, 1, wx.EXPAND)
@@ -1041,6 +1072,16 @@ class ManageBusesDialog(wx.Dialog):
             self.bus_list.SetItem(idx, 2, f"{int(bus.get('volume', 1.0) * 100)}%")
             self.bus_list.SetItem(idx, 3, bus.get("hotkey", ""))
             self.bus_list.SetItem(idx, 4, f"{bus.get('crossfade_ms', 500 if bus.get('mode') == 'exclusive' else 0)} ms")
+            
+            action_map = {
+                "loop_shuffle": "Loop (Shuffle)",
+                "loop_sequential": "Loop (Sequential)",
+                "single_shuffle": "Single (Shuffle)",
+                "single_sequential": "Single (Sequential)"
+            }
+            action_code = bus.get("hotkey_action", "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle")
+            action_str = action_map.get(action_code, "Single (Shuffle)")
+            self.bus_list.SetItem(idx, 5, action_str)
             # Associate bus dict to index
             self.bus_list.SetItemData(idx, idx)
 
