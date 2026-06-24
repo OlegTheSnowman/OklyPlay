@@ -8,28 +8,28 @@ import project_manager
 import ui_dialogs
 
 # Custom wx IDs
-ID_NEW_PROJECT = wx.NewIdRef().GetId()
-ID_OPEN_PROJECT = wx.NewIdRef().GetId()
-ID_SAVE_PROJECT = wx.NewIdRef().GetId()
-ID_EXPORT_PROJECT = wx.NewIdRef().GetId()
-ID_IMPORT_PROJECT = wx.NewIdRef().GetId()
+ID_NEW_PROJECT = wx.ID_NEW
+ID_OPEN_PROJECT = wx.ID_OPEN
+ID_SAVE_PROJECT = wx.ID_SAVE
+ID_EXPORT_PROJECT = wx.ID_HIGHEST + 1
+ID_IMPORT_PROJECT = wx.ID_HIGHEST + 2
 
-ID_ADD_SOUND = wx.NewIdRef().GetId()
-ID_EDIT_SOUND = wx.NewIdRef().GetId()
-ID_REMOVE_SOUND = wx.NewIdRef().GetId()
-ID_EDIT_SCENARIOS = wx.NewIdRef().GetId()
+ID_ADD_SOUND = wx.ID_HIGHEST + 3
+ID_EDIT_SOUND = wx.ID_HIGHEST + 4
+ID_REMOVE_SOUND = wx.ID_HIGHEST + 5
+ID_EDIT_SCENARIOS = wx.ID_HIGHEST + 6
 
-ID_MANAGE_BUSES = wx.NewIdRef().GetId()
-ID_STOP_BUS = wx.NewIdRef().GetId()
-ID_STOP_ALL = wx.NewIdRef().GetId()
+ID_MANAGE_BUSES = wx.ID_HIGHEST + 7
+ID_STOP_BUS = wx.ID_HIGHEST + 8
+ID_STOP_ALL = wx.ID_HIGHEST + 9
 
-ID_BUS_VOL_UP = wx.NewIdRef().GetId()
-ID_BUS_VOL_DOWN = wx.NewIdRef().GetId()
-ID_MASTER_VOL_UP = wx.NewIdRef().GetId()
-ID_MASTER_VOL_DOWN = wx.NewIdRef().GetId()
+ID_BUS_VOL_UP = wx.ID_HIGHEST + 10
+ID_BUS_VOL_DOWN = wx.ID_HIGHEST + 11
+ID_MASTER_VOL_UP = wx.ID_HIGHEST + 12
+ID_MASTER_VOL_DOWN = wx.ID_HIGHEST + 13
 
-ID_BUS_BASE = wx.NewIdRef().GetId()  # ID_BUS_BASE + 1 to 9
-ID_SCENARIO_BASE = wx.NewIdRef().GetId()  # ID_SCENARIO_BASE + 1 to 9
+ID_BUS_BASE = wx.ID_HIGHEST + 100  # ID_BUS_BASE + 1 to 9
+ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
 
 class MainFrame(wx.Frame):
     def __init__(self, parent, title="OklyPlay Soundboard"):
@@ -353,10 +353,10 @@ class MainFrame(wx.Frame):
             
         # Dynamic local hotkeys registered on sounds
         if self.project_data:
-            for sound in self.project_data.get("sounds", []):
+            for idx, sound in enumerate(self.project_data.get("sounds", [])):
                 hotkey_str = sound.get("hotkey", "").strip()
                 if hotkey_str:
-                    cmd_id = wx.NewIdRef().GetId()
+                    cmd_id = wx.ID_HIGHEST + 300 + idx
                     entry = self.ParseHotkeyToAccel(hotkey_str, cmd_id)
                     if entry:
                         entries.append(entry)
