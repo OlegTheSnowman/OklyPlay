@@ -179,12 +179,13 @@ class PreferencesDialog(wx.Dialog):
 
 class AddEditSoundDialog(wx.Dialog):
     """Dialog to add or edit sound properties (name, file, bus, hotkey, volume, fade, speed, loop)."""
-    def __init__(self, parent, buses, sound_data=None):
+    def __init__(self, parent, buses, sound_data=None, existing_sounds=None):
         title = "Edit Sound" if sound_data else "Add Sound"
         super().__init__(parent, title=title, size=(500, 480))
         
         self.buses = buses  # List of dicts (id, name)
         self.sound_data = sound_data
+        self.existing_sounds = existing_sounds
         
         panel = wx.Panel(self)
         grid = wx.FlexGridSizer(8, 2, 10, 10)
@@ -293,6 +294,7 @@ class AddEditSoundDialog(wx.Dialog):
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
         filepath = self.file_picker.GetPath().strip()
+        hotkey = self.hotkey_txt.GetValue().strip()
         
         if not name:
             wx.MessageBox("Sound name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
@@ -303,6 +305,19 @@ class AddEditSoundDialog(wx.Dialog):
             wx.MessageBox("Please select an audio file.", "Error", wx.OK | wx.ICON_ERROR)
             self.file_picker.SetFocus()
             return
+            
+        if hotkey and self.existing_sounds:
+            my_id = self.sound_data.get("id") if self.sound_data else None
+            for s in self.existing_sounds:
+                if s.get("id") != my_id and s.get("hotkey", "").strip().lower() == hotkey.lower():
+                    wx.MessageBox(
+                        f"The hotkey '{hotkey}' is already assigned to the sound '{s['name']}'.\n"
+                        "Please choose a different hotkey.",
+                        "Hotkey Conflict",
+                        wx.OK | wx.ICON_ERROR
+                    )
+                    self.hotkey_txt.SetFocus()
+                    return
             
         event.Skip()
 
