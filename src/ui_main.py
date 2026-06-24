@@ -875,7 +875,6 @@ class MainFrame(wx.Frame):
             self.selected_bus_id = bus["id"]
             self.RefreshSoundsList()
             self.UpdateStatusBar()
-            Speech.speak(f"Bus: {bus['name']}, {bus['mode']}")
 
     def OnSwitchBusHotkey(self, event):
         """Triggered via Ctrl+1..9. Switches the selected bus and auto-focuses the Sounds list."""
