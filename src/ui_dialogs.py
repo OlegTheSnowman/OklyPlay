@@ -21,7 +21,46 @@ class AccessibleName(wx.Accessible):
 
 def label_control(control, name):
     control.SetName(name)
-    control.SetAccessible(AccessibleName(control, name))
+    acc = AccessibleName(control, name)
+    control.SetAccessible(acc)
+    control._accessible_obj = acc
+    
+    # Also label the internal Edit/Text child for spin controls
+    if isinstance(control, (wx.SpinCtrl, wx.SpinCtrlDouble)):
+        # 1. Try wxPython children first (works for wx.SpinCtrlDouble)
+        labeled_child = False
+        for child in control.GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                child.SetName(name)
+                child_acc = AccessibleName(child, name)
+                child.SetAccessible(child_acc)
+                # Keep it alive by storing on the parent control
+                control._accessible_child_obj = child_acc
+                labeled_child = True
+                break
+                
+        # 2. Try Win32 sibling HWND (works for wx.SpinCtrl on Windows)
+        if not labeled_child:
+            try:
+                import ctypes
+                hwnd = control.GetHandle()
+                if hwnd:
+                    # GW_HWNDPREV = 3
+                    prev_hwnd = ctypes.windll.user32.GetWindow(hwnd, 3)
+                    if prev_hwnd:
+                        buf = ctypes.create_unicode_buffer(100)
+                        ctypes.windll.user32.GetClassNameW(prev_hwnd, buf, 100)
+                        if buf.value == "Edit":
+                            child_win = wx.Window()
+                            child_win.AssociateHandle(prev_hwnd)
+                            child_win.SetName(name)
+                            child_acc = AccessibleName(child_win, name)
+                            child_win.SetAccessible(child_acc)
+                            # Keep it alive by storing on the parent control
+                            control._accessible_sibling_obj = child_acc
+                            control._accessible_sibling_win = child_win
+            except Exception:
+                pass
 
 class HotkeyCtrl(wx.TextCtrl):
     """Custom TextCtrl that captures keypresses and formats them as hotkey strings."""
