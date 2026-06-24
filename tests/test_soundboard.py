@@ -658,6 +658,93 @@ class TestHotkeyCtrl(unittest.TestCase):
         frame.Destroy()
 
 
+class TestAccessibilityLabeling(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
+    def test_dialog_controls_are_labeled(self):
+        # 1. NewProjectDialog
+        dlg1 = ui_dialogs.NewProjectDialog(None)
+        self.assertEqual(dlg1.name_txt.GetAccessible().GetName(0)[1], "Project Name")
+        self.assertEqual(dlg1.loc_txt.GetAccessible().GetName(0)[1], "Project Location")
+        self.assertEqual(dlg1.browse_btn.GetAccessible().GetName(0)[1], "Browse Project Location")
+        dlg1.Destroy()
+        
+        # 2. PreferencesDialog
+        devices = [(0, "Default Device")]
+        dlg2 = ui_dialogs.PreferencesDialog(None, devices, current_device_index=0, current_volume=0.8)
+        self.assertEqual(dlg2.device_choice.GetAccessible().GetName(0)[1], "Audio Output Device")
+        self.assertEqual(dlg2.vol_slider.GetAccessible().GetName(0)[1], "Master Volume")
+        dlg2.Destroy()
+        
+        # 3. AddEditSoundDialog
+        buses = [{"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0}]
+        dlg3 = ui_dialogs.AddEditSoundDialog(None, buses)
+        self.assertEqual(dlg3.name_txt.GetAccessible().GetName(0)[1], "Sound Name")
+        self.assertEqual(dlg3.file_txt.GetAccessible().GetName(0)[1], "Audio File Path")
+        self.assertEqual(dlg3.file_browse_btn.GetAccessible().GetName(0)[1], "Browse Audio File")
+        self.assertEqual(dlg3.bus_choice.GetAccessible().GetName(0)[1], "Bus Assignment")
+        self.assertEqual(dlg3.hotkey_txt.GetAccessible().GetName(0)[1], "Hotkey Assignment")
+        self.assertEqual(dlg3.vol_slider.GetAccessible().GetName(0)[1], "Volume")
+        self.assertEqual(dlg3.fade_in_spin.GetAccessible().GetName(0)[1], "Fade In Milliseconds")
+        self.assertEqual(dlg3.fade_out_spin.GetAccessible().GetName(0)[1], "Fade Out Milliseconds")
+        self.assertEqual(dlg3.speed_spin.GetAccessible().GetName(0)[1], "Playback Speed Multiplier")
+        self.assertEqual(dlg3.loop_chk.GetAccessible().GetName(0)[1], "Loop Audio")
+        dlg3.Destroy()
+        
+        # 4. AddEditBusDialog
+        dlg4 = ui_dialogs.AddEditBusDialog(None)
+        self.assertEqual(dlg4.name_txt.GetAccessible().GetName(0)[1], "Bus Name")
+        self.assertEqual(dlg4.mode_choice.GetAccessible().GetName(0)[1], "Playback Mode")
+        self.assertEqual(dlg4.vol_slider.GetAccessible().GetName(0)[1], "Volume")
+        dlg4.Destroy()
+
+        # 5. ManageBusesDialog
+        project_data = {
+            "name": "Test Board",
+            "buses": buses,
+            "sounds": []
+        }
+        dlg5 = ui_dialogs.ManageBusesDialog(None, project_data)
+        self.assertEqual(dlg5.bus_list.GetAccessible().GetName(0)[1], "Buses List")
+        dlg5.Destroy()
+
+        # 6. AddEditScenarioDialog
+        dlg6 = ui_dialogs.AddEditScenarioDialog(None, buses)
+        self.assertEqual(dlg6.name_txt.GetAccessible().GetName(0)[1], "Scenario Name")
+        self.assertEqual(dlg6.vol_slider.GetAccessible().GetName(0)[1], "Volume Override")
+        self.assertEqual(dlg6.fade_in_spin.GetAccessible().GetName(0)[1], "Fade In Milliseconds")
+        self.assertEqual(dlg6.fade_out_spin.GetAccessible().GetName(0)[1], "Fade Out Milliseconds")
+        self.assertEqual(dlg6.speed_spin.GetAccessible().GetName(0)[1], "Speed Override")
+        self.assertEqual(dlg6.loop_chk.GetAccessible().GetName(0)[1], "Loop Override")
+        self.assertEqual(dlg6.bus_choice.GetAccessible().GetName(0)[1], "Bus Override")
+        dlg6.Destroy()
+
+        # 7. EditScenariosDialog
+        sound_data = {
+            "id": "sound-1",
+            "name": "Airhorn",
+            "filename": "horn.mp3",
+            "bus_id": "bus-1",
+            "default_scenario": {},
+            "scenarios": []
+        }
+        dlg7 = ui_dialogs.EditScenariosDialog(None, buses, sound_data)
+        self.assertEqual(dlg7.scen_list.GetAccessible().GetName(0)[1], "Scenarios List")
+        dlg7.Destroy()
+
+        # 8. ProjectManagerDialog
+        recent = [{"name": "P1", "path": "D:\\p1"}]
+        dlg8 = ui_dialogs.ProjectManagerDialog(None, recent)
+        self.assertEqual(dlg8.projects_list.GetAccessible().GetName(0)[1], "Recent Projects List")
+        dlg8.Destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
 
