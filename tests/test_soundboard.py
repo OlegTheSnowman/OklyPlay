@@ -1,10 +1,14 @@
 import os
+import sys
 import shutil
 import unittest
 import numpy as np
 import tempfile
 import soundfile as sf
 import json
+
+# Add src to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from accessible_speech import Speech
 from audio_engine import LoadedSound, Channel, AudioEngine
