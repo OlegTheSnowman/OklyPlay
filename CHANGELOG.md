@@ -17,7 +17,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   - `F2` opens the full Edit Sound dialog for the selected sound.
   - `Delete` removes the selected sound from the project.
   - `Ctrl+I` opens an additional import picker from inside the manager.
-- **Bus Hotkeys & Loop Playback** - Assign a hotkey to a bus; triggering it shuffles and loops through all sounds on that bus continuously, ideal for background music or ambient playlists.
+- **Bus Hotkeys & Configurable Actions** - Assign hotkeys to buses with configurable activation behaviors:
+  - **Loop (Shuffle)**: Shuffles and loops through all sounds on the bus continuously.
+  - **Loop (Sequential)**: Plays through all sounds on the bus in sequential order and loops continuously.
+  - **Single (Shuffle)**: Plays exactly one random sound from the bus and stops.
+  - **Single (Sequential)**: Plays one sound sequentially from the bus on each press and stops.
+  - Recommended defaults auto-populated depending on Playback Mode (exclusive defaults to Loop Shuffle; layered defaults to Single Shuffle).
 - **Quick Sound Hotkey (`Alt+K`)** - Press `Alt+K` while a sound is selected to assign or change its hotkey without opening the full Edit dialog.
 - **Exclusive Bus Crossfading & Editor** - Automatically crossfade between exclusive buses.
   - Playing a sound on an exclusive bus now fades out all channels on other exclusive buses using a configurable crossfade duration.
