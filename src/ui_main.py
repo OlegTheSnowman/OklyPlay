@@ -30,6 +30,7 @@ ID_MASTER_VOL_UP = wx.ID_HIGHEST + 12
 ID_MASTER_VOL_DOWN = wx.ID_HIGHEST + 13
 ID_MANAGE_PROJECTS = wx.ID_HIGHEST + 14
 ID_SET_SOUND_HOTKEY = wx.ID_HIGHEST + 15
+ID_SOUND_MANAGER = wx.ID_HIGHEST + 16
 
 ID_BUS_BASE = wx.ID_HIGHEST + 100  # ID_BUS_BASE + 1 to 9
 ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
@@ -134,6 +135,7 @@ class MainFrame(wx.Frame):
         edit_menu.Append(ID_ADD_SOUND, "&Add Sound...\tCtrl+I")
         edit_menu.Append(ID_EDIT_SOUND, "&Edit Sound...\tF2")
         edit_menu.Append(ID_REMOVE_SOUND, "&Remove Sound\tDelete")
+        edit_menu.Append(ID_SOUND_MANAGER, "&Sound Manager...\tAlt+S")
         edit_menu.Append(ID_SET_SOUND_HOTKEY, "Set Hotkey...\tAlt+K")
         edit_menu.AppendSeparator()
         edit_menu.Append(ID_EDIT_SCENARIOS, "Edit S&cenarios...\tCtrl+E")
@@ -187,6 +189,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnAddSound, id=ID_ADD_SOUND)
         self.Bind(wx.EVT_MENU, self.OnEditSound, id=ID_EDIT_SOUND)
         self.Bind(wx.EVT_MENU, self.OnRemoveSound, id=ID_REMOVE_SOUND)
+        self.Bind(wx.EVT_MENU, self.OnSoundManager, id=ID_SOUND_MANAGER)
         self.Bind(wx.EVT_MENU, self.OnSetSoundHotkey, id=ID_SET_SOUND_HOTKEY)
         self.Bind(wx.EVT_MENU, self.OnEditScenarios, id=ID_EDIT_SCENARIOS)
         
@@ -391,6 +394,7 @@ class MainFrame(wx.Frame):
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('I'), ID_ADD_SOUND),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_F2, ID_EDIT_SOUND),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_DELETE, ID_REMOVE_SOUND),
+            wx.AcceleratorEntry(wx.ACCEL_ALT, ord('S'), ID_SOUND_MANAGER),
             wx.AcceleratorEntry(wx.ACCEL_ALT, ord('K'), ID_SET_SOUND_HOTKEY),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('E'), ID_EDIT_SCENARIOS),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('B'), ID_MANAGE_BUSES),
@@ -644,6 +648,31 @@ class MainFrame(wx.Frame):
             except Exception as e:
                 wx.MessageBox(f"Failed to import sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
         dlg.Destroy()
+
+    def OnSoundManager(self, event):
+        """Open the Sound Manager dialog (Alt+S).
+
+        Sounds can be imported in bulk, reassigned to buses, edited, and removed.
+        Changes are written back to project_data and saved when the dialog closes.
+        """
+        if not self.project_data:
+            wx.MessageBox("Please create or open a project first.", "Error", wx.OK | wx.ICON_ERROR)
+            return
+
+        dlg = ui_dialogs.SoundManagerDialog(self, self.project_data, self.project_dir)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+        # Persist whatever the user changed inside the dialog
+        try:
+            project_manager.save_project(self.project_dir, self.project_data)
+        except Exception as e:
+            wx.MessageBox(f"Could not save project after Sound Manager changes:\n{e}",
+                          "Warning", wx.OK | wx.ICON_WARNING)
+
+        self.RefreshSoundsList()
+        self.RebuildAccelerators()
+        Speech.speak("Sound Manager closed")
 
     def OnEditSound(self, event):
         if not self.project_data:
