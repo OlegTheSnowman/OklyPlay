@@ -286,6 +286,305 @@ class PreferencesDialog(wx.Dialog):
         return self.vol_slider.GetValue() / 100.0
 
 
+class SoundManagerDialog(wx.Dialog):
+    """
+    Sound Manager — lets the user import sounds (without mandatory bus assignment),
+    view all project sounds, edit their properties inline, and reassign buses
+    quickly via Ctrl+1..9 while focused on the list.
+
+    Keyboard shortcuts inside the dialog:
+        Ctrl+I / Alt+I  — Import more sounds
+        F2              — Edit selected sound properties
+        Delete          — Remove selected sound
+        Ctrl+1..9       — Move selected sound to bus 1..9
+        Ctrl+U          — Clear bus assignment (unassign)
+    """
+
+    AUDIO_WILDCARD = (
+        "Audio files (*.mp3;*.wav;*.ogg;*.flac;*.aiff)|*.mp3;*.wav;*.ogg;*.flac;*.aiff"
+    )
+
+    def __init__(self, parent, project_data, project_dir):
+        super().__init__(parent, title="Sound Manager", size=(720, 500),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.project_data = project_data
+        self.project_dir = project_dir
+        # Keep a working copy of sounds so we can cancel changes
+        import copy
+        self._original_sounds = copy.deepcopy(project_data.get("sounds", []))
+
+        panel = wx.Panel(self)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # ── Instruction label ──────────────────────────────────────────────
+        hint = wx.StaticText(
+            panel,
+            label=(
+                "Manage all sounds. Use Ctrl+1–9 to assign the selected sound to a bus. "
+                "Ctrl+U clears the bus. Press F2 to edit, Delete to remove, "
+                "Ctrl+I to import more."
+            )
+        )
+        hint.Wrap(680)
+        main_sizer.Add(hint, 0, wx.ALL | wx.EXPAND, 8)
+
+        # ── Sound list ─────────────────────────────────────────────────────
+        self.sound_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        label_control(self.sound_list, "Sounds List — press Ctrl+1 through 9 to assign bus")
+        self.sound_list.InsertColumn(0, "Name", width=200)
+        self.sound_list.InsertColumn(1, "Bus", width=130)
+        self.sound_list.InsertColumn(2, "Hotkey", width=100)
+        self.sound_list.InsertColumn(3, "File", width=230)
+        main_sizer.Add(self.sound_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+
+        # ── Buttons row ────────────────────────────────────────────────────
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.import_btn = wx.Button(panel, label="&Import Sounds…\tCtrl+I")
+        self.edit_btn   = wx.Button(panel, label="&Edit Sound…\tF2")
+        self.remove_btn = wx.Button(panel, label="&Remove\tDelete")
+        close_btn       = wx.Button(panel, id=wx.ID_OK, label="&Close")
+
+        for b in (self.import_btn, self.edit_btn, self.remove_btn, close_btn):
+            btn_row.Add(b, 0, wx.RIGHT, 6)
+
+        main_sizer.Add(btn_row, 0, wx.ALL, 8)
+
+        panel.SetSizer(main_sizer)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(outer)
+
+        # ── Events ────────────────────────────────────────────────────────
+        self.import_btn.Bind(wx.EVT_BUTTON, self.OnImport)
+        self.edit_btn.Bind(wx.EVT_BUTTON, self.OnEdit)
+        self.remove_btn.Bind(wx.EVT_BUTTON, self.OnRemove)
+        self.sound_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnEdit)
+        self.sound_list.Bind(wx.EVT_KEY_DOWN, self.OnListKeyDown)
+
+        self._PopulateList()
+        self.sound_list.SetFocus()
+        self.CenterOnParent()
+
+    # ── Internal helpers ──────────────────────────────────────────────────
+
+    def _bus_name(self, bus_id):
+        """Return the bus name for a given bus_id, or '(unassigned)'."""
+        if not bus_id:
+            return "(unassigned)"
+        for b in self.project_data.get("buses", []):
+            if b["id"] == bus_id:
+                return b["name"]
+        return "(unassigned)"
+
+    def _PopulateList(self):
+        sel = self.sound_list.GetFirstSelected()
+        self.sound_list.DeleteAllItems()
+        sounds = self.project_data.get("sounds", [])
+        for idx, s in enumerate(sounds):
+            self.sound_list.InsertItem(idx, s.get("name", "(unnamed)"))
+            self.sound_list.SetItem(idx, 1, self._bus_name(s.get("bus_id", "")))
+            self.sound_list.SetItem(idx, 2, s.get("hotkey", ""))
+            self.sound_list.SetItem(idx, 3, s.get("filename", ""))
+            self.sound_list.SetItemData(idx, idx)
+        # Restore selection
+        if sel != wx.NOT_FOUND and sel < self.sound_list.GetItemCount():
+            self.sound_list.Select(sel)
+            self.sound_list.Focus(sel)
+        elif self.sound_list.GetItemCount() > 0:
+            self.sound_list.Select(0)
+            self.sound_list.Focus(0)
+
+    def _selected_sound(self):
+        """Return (list_idx, sound_dict) for the currently selected item, or (None, None)."""
+        sel = self.sound_list.GetFirstSelected()
+        if sel == wx.NOT_FOUND:
+            return None, None
+        sound_idx = self.sound_list.GetItemData(sel)
+        sounds = self.project_data.get("sounds", [])
+        if sound_idx < len(sounds):
+            return sel, sounds[sound_idx]
+        return None, None
+
+    def _assign_bus(self, bus_number):
+        """Assign the selected sound to bus number (1-based index into buses list)."""
+        sel, sound = self._selected_sound()
+        if sound is None:
+            return
+        buses = self.project_data.get("buses", [])
+        bus_idx = bus_number - 1
+        if bus_idx < 0 or bus_idx >= len(buses):
+            wx.Bell()
+            return
+        target_bus = buses[bus_idx]
+        sound["bus_id"] = target_bus["id"]
+        self._PopulateList()
+        # Keep the same row selected
+        if sel < self.sound_list.GetItemCount():
+            self.sound_list.Select(sel)
+            self.sound_list.Focus(sel)
+
+    # ── Event handlers ────────────────────────────────────────────────────
+
+    def OnListKeyDown(self, event):
+        key  = event.GetKeyCode()
+        mods = event.GetModifiers()
+
+        # Ctrl+1..9 → assign bus
+        if mods == wx.MOD_CONTROL and ord('1') <= key <= ord('9'):
+            self._assign_bus(key - ord('0'))
+            return
+
+        # Ctrl+U → unassign bus
+        if mods == wx.MOD_CONTROL and key == ord('U'):
+            _, sound = self._selected_sound()
+            if sound is not None:
+                sound["bus_id"] = ""
+                self._PopulateList()
+            return
+
+        # F2 → edit
+        if key == wx.WXK_F2 and mods == wx.MOD_NONE:
+            self.OnEdit(None)
+            return
+
+        # Delete → remove
+        if key == wx.WXK_DELETE and mods == wx.MOD_NONE:
+            self.OnRemove(None)
+            return
+
+        # Ctrl+I → import
+        if mods == wx.MOD_CONTROL and key == ord('I'):
+            self.OnImport(None)
+            return
+
+        event.Skip()
+
+    def OnImport(self, event):
+        """Open a multi-select file picker and import each chosen file as a new sound."""
+        dlg = wx.FileDialog(
+            self,
+            message="Select Audio Files to Import",
+            wildcard=self.AUDIO_WILDCARD,
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE,
+        )
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+
+        paths = dlg.GetPaths()
+        dlg.Destroy()
+
+        sounds_dir = os.path.join(self.project_dir, "sounds")
+        os.makedirs(sounds_dir, exist_ok=True)
+        imported = 0
+        skipped  = 0
+
+        for src in paths:
+            basename = os.path.basename(src)
+            name_no_ext = os.path.splitext(basename)[0]
+
+            # Copy file, avoiding name collision
+            target = basename
+            counter = 1
+            while os.path.exists(os.path.join(sounds_dir, target)):
+                base, ext = os.path.splitext(basename)
+                target = f"{base}_{counter}{ext}"
+                counter += 1
+
+            try:
+                import shutil
+                shutil.copy2(src, os.path.join(sounds_dir, target))
+            except Exception as e:
+                skipped += 1
+                continue
+
+            new_sound = {
+                "id":       str(uuid.uuid4()),
+                "name":     name_no_ext,
+                "filename": target,
+                "bus_id":   "",           # intentionally unassigned
+                "hotkey":   "",
+                "default_scenario": {
+                    "volume":      1.0,
+                    "fade_in_ms":  0,
+                    "fade_out_ms": 0,
+                    "speed":       1.0,
+                    "loop":        False,
+                },
+                "scenarios": [],
+                "missing":   False,
+            }
+            self.project_data["sounds"].append(new_sound)
+            imported += 1
+
+        self._PopulateList()
+        msg = f"Imported {imported} sound(s)."
+        if skipped:
+            msg += f" {skipped} file(s) could not be copied."
+        wx.MessageBox(msg, "Import Complete", wx.OK | wx.ICON_INFORMATION)
+
+    def OnEdit(self, event):
+        """Open AddEditSoundDialog for the selected sound."""
+        sel, sound = self._selected_sound()
+        if sound is None:
+            wx.Bell()
+            return
+
+        sounds_dir = os.path.join(self.project_dir, "sounds")
+        full_path  = os.path.join(sounds_dir, sound.get("filename", ""))
+        temp = sound.copy()
+        temp["filename"] = full_path
+
+        buses = self.project_data.get("buses", [])
+        dlg = AddEditSoundDialog(self, buses, temp,
+                                 existing_sounds=self.project_data.get("sounds", []))
+        if dlg.ShowModal() == wx.ID_OK:
+            updated = dlg.GetSoundData()
+            new_full = updated.pop("filepath_full", "")
+            # If user picked a new file, copy it in
+            if new_full and new_full != full_path and os.path.exists(new_full):
+                import shutil
+                new_rel = os.path.basename(new_full)
+                dest = os.path.join(sounds_dir, new_rel)
+                counter = 1
+                while os.path.exists(dest) and dest != os.path.join(sounds_dir, sound["filename"]):
+                    base, ext = os.path.splitext(new_rel)
+                    new_rel = f"{base}_{counter}{ext}"
+                    dest = os.path.join(sounds_dir, new_rel)
+                    counter += 1
+                shutil.copy2(new_full, dest)
+                updated["filename"] = new_rel
+            else:
+                updated["filename"] = sound["filename"]
+
+            # Preserve the id
+            updated["id"] = sound["id"]
+
+            # Patch in-place
+            sounds = self.project_data.get("sounds", [])
+            for i, s in enumerate(sounds):
+                if s["id"] == sound["id"]:
+                    sounds[i] = updated
+                    break
+            self._PopulateList()
+        dlg.Destroy()
+
+    def OnRemove(self, event):
+        sel, sound = self._selected_sound()
+        if sound is None:
+            wx.Bell()
+            return
+        answer = wx.MessageBox(
+            f"Remove '{sound.get('name', '?')}' from the project?",
+            "Confirm Remove",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+        )
+        if answer == wx.YES:
+            sounds = self.project_data.get("sounds", [])
+            self.project_data["sounds"] = [s for s in sounds if s["id"] != sound["id"]]
+            self._PopulateList()
+
+
 class AddEditSoundDialog(wx.Dialog):
     """Dialog to add or edit sound properties (name, file, bus, hotkey, volume, fade, speed, loop)."""
     def __init__(self, parent, buses, sound_data=None, existing_sounds=None):
