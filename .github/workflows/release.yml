@@ -31,9 +31,32 @@ jobs:
       run: |
         python -m PyInstaller --onefile --windowed --paths src --name OklyPlay src/soundboard.py
 
+    - name: Extract changelog for this release
+      id: changelog
+      shell: python
+      run: |
+        import re, os
+
+        tag = os.environ.get("GITHUB_REF_NAME", "")          # e.g. "v1.1.0"
+        version = tag.lstrip("v")                              # e.g. "1.1.0"
+
+        with open("CHANGELOG.md", encoding="utf-8") as fh:
+            text = fh.read()
+
+        # Grab the section that starts with ## [version] up to the next ##
+        pattern = rf"(?m)^## \[{re.escape(version)}\].*?(?=^## |\Z)"
+        match = re.search(pattern, text, re.DOTALL)
+        body = match.group(0).strip() if match else f"Release {tag}"
+
+        # Write to GITHUB_OUTPUT (multi-line value)
+        delimiter = "EOF_CHANGELOG"
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            out.write(f"body<<{delimiter}\n{body}\n{delimiter}\n")
+
     - name: Create Release and Upload Asset
       uses: softprops/action-gh-release@v2
       with:
         files: dist/OklyPlay.exe
+        body: ${{ steps.changelog.outputs.body }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
