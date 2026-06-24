@@ -45,6 +45,8 @@ class MainFrame(wx.Frame):
         self.selected_bus_id = None
         self.current_bus_sounds = []
         self.hotkey_id_map = {}
+        self.bus_hotkey_map = {}
+        self.active_bus_playlists = {}
         
         # Initialize Audio Engine
         self.audio_engine = AudioEngine()
@@ -376,6 +378,7 @@ class MainFrame(wx.Frame):
     def RebuildAccelerators(self):
         """Rebuilds the accelerator table, combining standard menu bindings and sound-level hotkeys."""
         self.hotkey_id_map.clear()
+        self.bus_hotkey_map.clear()
         
         # Base accelerators from Menu Bar shortcuts
         # Standard wxPython handles Menu Ctrl+N, Ctrl+O, etc. automatically via menu item text shortcut.
@@ -420,6 +423,18 @@ class MainFrame(wx.Frame):
                         entries.append(entry)
                         self.hotkey_id_map[cmd_id] = sound["id"]
                         self.Bind(wx.EVT_MENU, self.OnDynamicHotkeyTriggered, id=cmd_id)
+                        
+        # Dynamic bus hotkeys registered on buses
+        if self.project_data:
+            for idx, bus in enumerate(self.project_data.get("buses", [])):
+                hotkey_str = bus.get("hotkey", "").strip()
+                if hotkey_str:
+                    cmd_id = wx.ID_HIGHEST + 1000 + idx
+                    entry = self.ParseHotkeyToAccel(hotkey_str, cmd_id)
+                    if entry:
+                        entries.append(entry)
+                        self.bus_hotkey_map[cmd_id] = bus["id"]
+                        self.Bind(wx.EVT_MENU, self.OnBusHotkeyTriggered, id=cmd_id)
                         
         self.SetAcceleratorTable(wx.AcceleratorTable(entries))
 
@@ -801,11 +816,17 @@ class MainFrame(wx.Frame):
             return
         bus = self.GetSelectedBus()
         if bus:
+            # Immediately deactivate the playlist loop for this bus
+            if self.selected_bus_id in self.active_bus_playlists:
+                self.active_bus_playlists[self.selected_bus_id]["active"] = False
             self.audio_engine.stop_bus(self.selected_bus_id)
             Speech.speak(f"Stopped {bus['name']}")
 
     def OnStopAll(self, event):
         if self.audio_engine:
+            # Immediately deactivate all playlist loops
+            for playlist in self.active_bus_playlists.values():
+                playlist["active"] = False
             self.audio_engine.stop_all()
             Speech.speak("All sounds stopped")
 
@@ -902,7 +923,7 @@ class MainFrame(wx.Frame):
     def PlaySound(self, sound, scenario, scenario_name=None):
         if sound.get("missing"):
             Speech.speak(f"Cannot play {sound['name']}: file is missing.")
-            return
+            return None
             
         sounds_dir = os.path.join(self.project_dir, "sounds")
         filepath = os.path.join(sounds_dir, sound["filename"])
@@ -916,11 +937,13 @@ class MainFrame(wx.Frame):
                 break
                 
         try:
-            self.audio_engine.play(filepath, scenario, bus_id, bus_mode, sound_name=sound["name"])
+            ch = self.audio_engine.play(filepath, scenario, bus_id, bus_mode, sound_name=sound["name"])
             self.UpdateStatusBar()
+            return ch
         except Exception as e:
             Speech.speak(f"Error: Playback failed for {sound['name']}")
             print(f"Playback failed: {e}")
+            return None
 
     # --- Volume Adjustment Handlers ---
     def OnBusVolUp(self, event):
@@ -967,6 +990,102 @@ class MainFrame(wx.Frame):
             done_channels = self.audio_engine.cleanup_done_channels()
             if done_channels:
                 self.UpdateStatusBar()
+                
+                # Check if any finished channels belong to our active playlists
+                for ch in done_channels:
+                    for bus_id, playlist in list(self.active_bus_playlists.items()):
+                        if playlist["active"] and playlist.get("current_channel") == ch:
+                            # This channel belongs to the active playlist of bus_id.
+                            # Was it stopped manually or did it finish naturally?
+                            if ch._fading_out:
+                                # Stopped manually! Terminate the loop.
+                                playlist["active"] = False
+                                bus = self.GetBusById(bus_id)
+                                Speech.speak(f"Stopped playlist for bus {bus['name'] if bus else 'unknown'}")
+                            else:
+                                # Finished naturally! Proceed to next track.
+                                self.PlayNextSoundInBusPlaylist(bus_id)
+
+    def GetBusById(self, bus_id):
+        if not self.project_data:
+            return None
+        for b in self.project_data.get("buses", []):
+            if b["id"] == bus_id:
+                return b
+        return None
+
+    def OnBusHotkeyTriggered(self, event):
+        """Triggered via dynamic bus hotkeys. Toggles the shuffled looping playlist for the bus."""
+        bus_id = self.bus_hotkey_map.get(event.GetId())
+        if not bus_id or not self.project_data:
+            return
+        self.ToggleBusPlaylist(bus_id)
+
+    def ToggleBusPlaylist(self, bus_id):
+        bus = self.GetBusById(bus_id)
+        if not bus:
+            return
+            
+        playlist = self.active_bus_playlists.get(bus_id)
+        if playlist and playlist["active"]:
+            playlist["active"] = False
+            self.audio_engine.stop_bus(bus_id)
+            Speech.speak(f"Stopped playlist for bus {bus['name']}")
+        else:
+            # Gather all non-missing sounds belonging to this bus
+            sounds = [s for s in self.project_data.get("sounds", []) if s.get("bus_id") == bus_id and not s.get("missing")]
+            if not sounds:
+                Speech.speak(f"No sounds in bus {bus['name']} to play.")
+                return
+                
+            # Stop any existing playback on this bus first
+            self.audio_engine.stop_bus(bus_id)
+            
+            # Shuffle and build the queue
+            import random
+            shuffled_sounds = list(sounds)
+            random.shuffle(shuffled_sounds)
+            
+            # Start the first sound
+            sound = shuffled_sounds[0]
+            ch = self.PlaySound(sound, sound["default_scenario"])
+            if ch:
+                self.active_bus_playlists[bus_id] = {
+                    "shuffled_sounds": shuffled_sounds,
+                    "index": 0,
+                    "current_channel": ch,
+                    "active": True
+                }
+                Speech.speak(f"Starting playlist for bus {bus['name']}. Playing {sound['name']}.")
+            else:
+                Speech.speak(f"Failed to play first sound in playlist for bus {bus['name']}.")
+
+    def PlayNextSoundInBusPlaylist(self, bus_id):
+        playlist = self.active_bus_playlists.get(bus_id)
+        if not playlist or not playlist["active"]:
+            return
+            
+        shuffled_sounds = playlist["shuffled_sounds"]
+        idx = playlist["index"] + 1
+        
+        # If we reached the end of the queue, reshuffle and start over
+        if idx >= len(shuffled_sounds):
+            import random
+            random.shuffle(shuffled_sounds)
+            idx = 0
+            
+        playlist["index"] = idx
+        sound = shuffled_sounds[idx]
+        
+        bus = self.GetBusById(bus_id)
+        # Play next sound
+        ch = self.PlaySound(sound, sound["default_scenario"])
+        if ch:
+            playlist["current_channel"] = ch
+            Speech.speak(f"Playing next: {sound['name']}")
+        else:
+            playlist["active"] = False
+            Speech.speak(f"Failed to play next sound {sound['name']}. Playlist stopped.")
 
     # --- Help & About Dialog ---
     def OnAbout(self, event):
