@@ -27,7 +27,9 @@ def create_project(path, name):
                 "volume": 0.7,
                 "crossfade_ms": 500,
                 "hotkey_action": "loop_shuffle",
-                "track_crossfade_ms": 2000
+                "track_crossfade_ms": 2000,
+                "duck_factor": 1.0,
+                "duckable": True
             },
             {
                 "id": sfx_bus_id,
@@ -36,7 +38,9 @@ def create_project(path, name):
                 "volume": 1.0,
                 "crossfade_ms": 0,
                 "hotkey_action": "single_shuffle",
-                "track_crossfade_ms": 0
+                "track_crossfade_ms": 0,
+                "duck_factor": 1.0,
+                "duckable": False
             }
         ],
         "sounds": []
@@ -65,6 +69,10 @@ def load_project(path):
             bus["hotkey_action"] = "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle"
         if "track_crossfade_ms" not in bus:
             bus["track_crossfade_ms"] = 2000 if bus.get("mode") == "exclusive" else 0
+        if "duck_factor" not in bus:
+            bus["duck_factor"] = 1.0
+        if "duckable" not in bus:
+            bus["duckable"] = True if bus.get("mode") == "exclusive" else False
     if "sounds" not in data:
         data["sounds"] = []
     if "master_volume" not in data:
