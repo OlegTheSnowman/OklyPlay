@@ -11,6 +11,18 @@ def create_dialog_buttons(panel, ok_label="OK", cancel_label="Cancel"):
     btn_sizer.Add(cancel_btn, 0, wx.ALL, 5)
     return btn_sizer, ok_btn, cancel_btn
 
+class AccessibleName(wx.Accessible):
+    def __init__(self, window, name):
+        super().__init__(window)
+        self.name = name
+
+    def GetName(self, childId):
+        return wx.ACC_OK, self.name
+
+def label_control(control, name):
+    control.SetName(name)
+    control.SetAccessible(AccessibleName(control, name))
+
 class HotkeyCtrl(wx.TextCtrl):
     """Custom TextCtrl that captures keypresses and formats them as hotkey strings."""
     def __init__(self, parent, *args, **kwargs):
@@ -81,7 +93,7 @@ class NewProjectDialog(wx.Dialog):
         # Name field
         name_lbl = wx.StaticText(panel, label="Project Name:")
         self.name_txt = wx.TextCtrl(panel)
-        self.name_txt.SetName("Project Name")
+        label_control(self.name_txt, "Project Name")
         grid.Add(name_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
@@ -89,9 +101,9 @@ class NewProjectDialog(wx.Dialog):
         loc_lbl = wx.StaticText(panel, label="Location:")
         loc_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.loc_txt = wx.TextCtrl(panel)
-        self.loc_txt.SetName("Project Location")
+        label_control(self.loc_txt, "Project Location")
         self.browse_btn = wx.Button(panel, label="&Browse...")
-        self.browse_btn.SetName("Browse Project Location")
+        label_control(self.browse_btn, "Browse Project Location")
         loc_sizer.Add(self.loc_txt, 1, wx.EXPAND | wx.RIGHT, 5)
         loc_sizer.Add(self.browse_btn, 0)
         grid.Add(loc_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -159,7 +171,7 @@ class PreferencesDialog(wx.Dialog):
         self.devices = devices  # List of (index, name)
         device_names = [d[1] for d in devices]
         self.device_choice = wx.Choice(panel, choices=device_names)
-        self.device_choice.SetName("Audio Output Device")
+        label_control(self.device_choice, "Audio Output Device")
         grid.Add(device_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.device_choice, 1, wx.EXPAND)
         
@@ -175,7 +187,7 @@ class PreferencesDialog(wx.Dialog):
         # Master volume slider
         vol_lbl = wx.StaticText(panel, label="Master Volume:")
         self.vol_slider = wx.Slider(panel, value=int(current_volume * 100), minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
-        self.vol_slider.SetName("Master Volume")
+        label_control(self.vol_slider, "Master Volume")
         grid.Add(vol_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
@@ -217,16 +229,16 @@ class AddEditSoundDialog(wx.Dialog):
         # Name field
         grid.Add(wx.StaticText(panel, label="Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.name_txt = wx.TextCtrl(panel)
-        self.name_txt.SetName("Sound Name")
+        label_control(self.name_txt, "Sound Name")
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
         # File field
         grid.Add(wx.StaticText(panel, label="Audio File:"), 0, wx.ALIGN_CENTER_VERTICAL)
         file_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.file_txt = wx.TextCtrl(panel)
-        self.file_txt.SetName("Audio File Path")
+        label_control(self.file_txt, "Audio File Path")
         self.file_browse_btn = wx.Button(panel, label="&Browse...")
-        self.file_browse_btn.SetName("Browse Audio File")
+        label_control(self.file_browse_btn, "Browse Audio File")
         file_sizer.Add(self.file_txt, 1, wx.EXPAND | wx.RIGHT, 5)
         file_sizer.Add(self.file_browse_btn, 0)
         grid.Add(file_sizer, 1, wx.EXPAND)
@@ -236,7 +248,7 @@ class AddEditSoundDialog(wx.Dialog):
         grid.Add(wx.StaticText(panel, label="Bus Assignment:"), 0, wx.ALIGN_CENTER_VERTICAL)
         bus_names = [b["name"] for b in buses]
         self.bus_choice = wx.Choice(panel, choices=bus_names)
-        self.bus_choice.SetName("Bus Assignment")
+        label_control(self.bus_choice, "Bus Assignment")
         grid.Add(self.bus_choice, 1, wx.EXPAND)
         if bus_names:
             self.bus_choice.SetSelection(0)
@@ -244,37 +256,37 @@ class AddEditSoundDialog(wx.Dialog):
         # Hotkey field
         grid.Add(wx.StaticText(panel, label="Hotkey:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.hotkey_txt = HotkeyCtrl(panel)
-        self.hotkey_txt.SetName("Hotkey Assignment")
+        label_control(self.hotkey_txt, "Hotkey Assignment")
         grid.Add(self.hotkey_txt, 1, wx.EXPAND)
         
         # Volume slider
         grid.Add(wx.StaticText(panel, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.vol_slider = wx.Slider(panel, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
-        self.vol_slider.SetName("Volume")
+        label_control(self.vol_slider, "Volume")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
         # Fade In spin
         grid.Add(wx.StaticText(panel, label="Fade In (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.fade_in_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
-        self.fade_in_spin.SetName("Fade In Milliseconds")
+        label_control(self.fade_in_spin, "Fade In Milliseconds")
         grid.Add(self.fade_in_spin, 1, wx.EXPAND)
         
         # Fade Out spin
         grid.Add(wx.StaticText(panel, label="Fade Out (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.fade_out_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
-        self.fade_out_spin.SetName("Fade Out Milliseconds")
+        label_control(self.fade_out_spin, "Fade Out Milliseconds")
         grid.Add(self.fade_out_spin, 1, wx.EXPAND)
         
         # Speed double spin
         grid.Add(wx.StaticText(panel, label="Playback Speed:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.speed_spin = wx.SpinCtrlDouble(panel, min=0.1, max=3.0, initial=1.0, inc=0.1)
-        self.speed_spin.SetName("Playback Speed Multiplier")
+        label_control(self.speed_spin, "Playback Speed Multiplier")
         grid.Add(self.speed_spin, 1, wx.EXPAND)
         
         # Loop checkbox
         grid.Add(wx.StaticText(panel, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
         self.loop_chk = wx.CheckBox(panel, label="Loop Audio")
-        self.loop_chk.SetName("Loop Audio")
+        label_control(self.loop_chk, "Loop Audio")
         grid.Add(self.loop_chk, 1, wx.EXPAND)
         
         # Populate if editing
@@ -402,20 +414,20 @@ class AddEditBusDialog(wx.Dialog):
         # Name field
         grid.Add(wx.StaticText(panel, label="Bus Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.name_txt = wx.TextCtrl(panel)
-        self.name_txt.SetName("Bus Name")
+        label_control(self.name_txt, "Bus Name")
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
         # Mode choice
         grid.Add(wx.StaticText(panel, label="Playback Mode:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.mode_choice = wx.Choice(panel, choices=["exclusive", "layered"])
-        self.mode_choice.SetName("Playback Mode")
+        label_control(self.mode_choice, "Playback Mode")
         grid.Add(self.mode_choice, 1, wx.EXPAND)
         self.mode_choice.SetSelection(1)  # Default layered
         
         # Volume slider
         grid.Add(wx.StaticText(panel, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.vol_slider = wx.Slider(panel, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
-        self.vol_slider.SetName("Volume")
+        label_control(self.vol_slider, "Volume")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
         if bus_data:
@@ -467,7 +479,7 @@ class ManageBusesDialog(wx.Dialog):
         list_sizer = wx.BoxSizer(wx.VERTICAL)
         list_lbl = wx.StaticText(panel, label="Buses:")
         self.bus_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.bus_list.SetName("Buses List")
+        label_control(self.bus_list, "Buses List")
         self.bus_list.InsertColumn(0, "Name", width=180)
         self.bus_list.InsertColumn(1, "Mode", width=100)
         self.bus_list.InsertColumn(2, "Volume", width=80)
@@ -595,44 +607,44 @@ class AddEditScenarioDialog(wx.Dialog):
         # Scenario Name
         grid.Add(wx.StaticText(panel, label="Scenario Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.name_txt = wx.TextCtrl(panel)
-        self.name_txt.SetName("Scenario Name")
+        label_control(self.name_txt, "Scenario Name")
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
         # Volume
         grid.Add(wx.StaticText(panel, label="Volume Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.vol_slider = wx.Slider(panel, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
-        self.vol_slider.SetName("Volume Override")
+        label_control(self.vol_slider, "Volume Override")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
         # Fade In
         grid.Add(wx.StaticText(panel, label="Fade In Override (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.fade_in_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
-        self.fade_in_spin.SetName("Fade In Milliseconds")
+        label_control(self.fade_in_spin, "Fade In Milliseconds")
         grid.Add(self.fade_in_spin, 1, wx.EXPAND)
         
         # Fade Out
         grid.Add(wx.StaticText(panel, label="Fade Out Override (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.fade_out_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
-        self.fade_out_spin.SetName("Fade Out Milliseconds")
+        label_control(self.fade_out_spin, "Fade Out Milliseconds")
         grid.Add(self.fade_out_spin, 1, wx.EXPAND)
         
         # Speed
         grid.Add(wx.StaticText(panel, label="Speed Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.speed_spin = wx.SpinCtrlDouble(panel, min=0.1, max=3.0, initial=1.0, inc=0.1)
-        self.speed_spin.SetName("Speed Override")
+        label_control(self.speed_spin, "Speed Override")
         grid.Add(self.speed_spin, 1, wx.EXPAND)
         
         # Loop
         grid.Add(wx.StaticText(panel, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
         self.loop_chk = wx.CheckBox(panel, label="Loop Override")
-        self.loop_chk.SetName("Loop Override")
+        label_control(self.loop_chk, "Loop Override")
         grid.Add(self.loop_chk, 1, wx.EXPAND)
         
         # Bus Override
         grid.Add(wx.StaticText(panel, label="Bus Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
         bus_choices = ["None (Use Default Bus)"] + [b["name"] for b in buses]
         self.bus_choice = wx.Choice(panel, choices=bus_choices)
-        self.bus_choice.SetName("Bus Override")
+        label_control(self.bus_choice, "Bus Override")
         grid.Add(self.bus_choice, 1, wx.EXPAND)
         self.bus_choice.SetSelection(0)
         
@@ -705,7 +717,7 @@ class EditScenariosDialog(wx.Dialog):
         list_sizer = wx.BoxSizer(wx.VERTICAL)
         list_lbl = wx.StaticText(panel, label="Scenarios:")
         self.scen_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.scen_list.SetName("Scenarios List")
+        label_control(self.scen_list, "Scenarios List")
         self.scen_list.InsertColumn(0, "Name", width=150)
         self.scen_list.InsertColumn(1, "Vol", width=50)
         self.scen_list.InsertColumn(2, "Fade In", width=70)
@@ -869,7 +881,7 @@ class ProjectManagerDialog(wx.Dialog):
         list_sizer = wx.BoxSizer(wx.VERTICAL)
         list_lbl = wx.StaticText(panel, label="Recent Projects:")
         self.projects_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.projects_list.SetName("Recent Projects List")
+        label_control(self.projects_list, "Recent Projects List")
         self.projects_list.InsertColumn(0, "Name", width=180)
         self.projects_list.InsertColumn(1, "Path", width=250)
         
