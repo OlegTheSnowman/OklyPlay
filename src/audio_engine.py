@@ -225,7 +225,7 @@ class AudioEngine:
             
         np.clip(outdata, -1.0, 1.0, out=outdata)
 
-    def play(self, filepath, scenario, bus_id, bus_mode, sound_name=""):
+    def play(self, filepath, scenario, bus_id, bus_mode, exclusive_bus_ids=None, crossfade_ms=500, sound_name=""):
         """Plays a sound on a bus with a given scenario preset."""
         if filepath not in self._loaded_sounds:
             self._loaded_sounds[filepath] = LoadedSound(filepath, self.sample_rate)
@@ -237,11 +237,16 @@ class AudioEngine:
         fade_in_ms = scenario.get('fade_in_ms', 0)
         fade_out_ms = scenario.get('fade_out_ms', 0)
         
-        # Exclusive bus behavior: crossfade other channels on the same bus
+        # Exclusive bus behavior: crossfade other channels on exclusive buses (or same bus if exclusive_bus_ids not provided)
         if bus_mode == 'exclusive':
-            for ch in self._active_channels:
-                if ch.bus_id == bus_id and not ch._fading_out:
-                    ch.start_fade_out(fade_in_ms)
+            if exclusive_bus_ids is not None:
+                for ch in self._active_channels:
+                    if ch.bus_id in exclusive_bus_ids and not ch._fading_out:
+                        ch.start_fade_out(crossfade_ms)
+            else:
+                for ch in self._active_channels:
+                    if ch.bus_id == bus_id and not ch._fading_out:
+                        ch.start_fade_out(fade_in_ms)
                     
         new_channel = Channel(
             sound_data=audio_data,

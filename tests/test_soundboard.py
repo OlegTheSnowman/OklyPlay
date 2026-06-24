@@ -105,6 +105,29 @@ class TestAudioEngine(unittest.TestCase):
         ch2.render(5000)
         self.assertTrue(ch2.is_done)
 
+    def test_exclusive_bus_crossfade(self):
+        engine = AudioEngine(sample_rate=self.sample_rate)
+        scenario = {"volume": 1.0, "fade_in_ms": 100, "fade_out_ms": 100, "speed": 1.0, "loop": False}
+        
+        # We start playing on bus_1 (exclusive)
+        ch1 = engine.play(self.wav_path, scenario, bus_id="bus_1", bus_mode="exclusive")
+        self.assertEqual(len(engine._active_channels), 1)
+        self.assertFalse(ch1._fading_out)
+        
+        # Start playing on bus_2 (exclusive), passing exclusive_bus_ids = {"bus_1", "bus_2"}
+        exclusive_bus_ids = {"bus_1", "bus_2"}
+        ch2 = engine.play(self.wav_path, scenario, bus_id="bus_2", bus_mode="exclusive", exclusive_bus_ids=exclusive_bus_ids, crossfade_ms=300)
+        
+        # ch1 should be fading out, ch2 should not be fading out
+        self.assertTrue(ch1._fading_out)
+        self.assertFalse(ch2._fading_out)
+        self.assertEqual(ch1._fade_out_samples, int(300 * self.sample_rate / 1000))
+        
+        # A layered bus sound playing should NOT trigger fade out on exclusive buses
+        ch3 = engine.play(self.wav_path, scenario, bus_id="bus_3", bus_mode="layered", exclusive_bus_ids=exclusive_bus_ids)
+        self.assertFalse(ch3._fading_out)
+        self.assertFalse(ch2._fading_out)
+
 
 class TestProjectManager(unittest.TestCase):
     def setUp(self):
