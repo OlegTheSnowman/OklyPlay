@@ -12,3 +12,5 @@ dist/
 
 # Agent config
 .agents/
+AGENTS.md
+
