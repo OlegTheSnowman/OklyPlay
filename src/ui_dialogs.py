@@ -507,9 +507,9 @@ class ManageBusesDialog(wx.Dialog):
     def PopulateList(self):
         self.bus_list.DeleteAllItems()
         for idx, bus in enumerate(self.project_data["buses"]):
-            self.bus_list.InsertItem(idx, bus["name"])
-            self.bus_list.SetItem(idx, 1, bus["mode"])
-            self.bus_list.SetItem(idx, 2, f"{int(bus['volume'] * 100)}%")
+            self.bus_list.InsertItem(idx, bus.get("name", "Unnamed"))
+            self.bus_list.SetItem(idx, 1, bus.get("mode", "layered"))
+            self.bus_list.SetItem(idx, 2, f"{int(bus.get('volume', 1.0) * 100)}%")
             # Associate bus dict to index
             self.bus_list.SetItemData(idx, idx)
 
