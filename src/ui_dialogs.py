@@ -479,7 +479,8 @@ class AddEditBusDialog(wx.Dialog):
     """Dialog to create or edit a bus's name, mode, and volume."""
     def __init__(self, parent, bus_data=None):
         title = "Edit Bus" if bus_data else "Add Bus"
-        super().__init__(parent, title=title, size=(400, 260))
+        super().__init__(parent, title=title, size=(400, 310))
+        self.bus_data = bus_data
         
         panel = wx.Panel(self)
         grid = wx.FlexGridSizer(0, 2, 12, 10)
@@ -504,11 +505,19 @@ class AddEditBusDialog(wx.Dialog):
         label_control(self.vol_slider, "Volume")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
+        # Hotkey field
+        grid.Add(wx.StaticText(panel, label="Hotkey:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.hotkey_txt = HotkeyCtrl(panel)
+        label_control(self.hotkey_txt, "Bus Hotkey")
+        grid.Add(self.hotkey_txt, 1, wx.EXPAND)
+        
         if bus_data:
             self.name_txt.SetValue(bus_data.get("name", ""))
             mode = bus_data.get("mode", "layered")
             self.mode_choice.SetSelection(0 if mode == "exclusive" else 1)
             self.vol_slider.SetValue(int(bus_data.get("volume", 1.0) * 100))
+            self.hotkey_txt.SetValue(bus_data.get("hotkey", ""))
+            self.hotkey_txt.hotkey_value = bus_data.get("hotkey", "")
             
         panel_sizer = wx.BoxSizer(wx.VERTICAL)
         panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
@@ -522,24 +531,58 @@ class AddEditBusDialog(wx.Dialog):
         
         self.name_txt.SetFocus()  # Set focus on first field
         self.CenterOnParent()
-
+ 
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
         if not name:
             wx.MessageBox("Bus name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
             self.name_txt.SetFocus()
             return
+            
+        hotkey = self.hotkey_txt.GetValue().strip()
+        if hotkey:
+            # Locate parent window to query project data for verification
+            parent_dlg = self.Parent
+            while parent_dlg and not hasattr(parent_dlg, "project_data"):
+                parent_dlg = parent_dlg.Parent
+                
+            if parent_dlg and hasattr(parent_dlg, "project_data"):
+                project_data = parent_dlg.project_data
+                my_id = self.bus_data.get("id") if self.bus_data else None
+                
+                # Check other buses
+                for b in project_data.get("buses", []):
+                    if b.get("id") != my_id and b.get("hotkey", "").strip().lower() == hotkey.lower():
+                        wx.MessageBox(
+                            f"The hotkey '{hotkey}' is already assigned to the bus '{b['name']}'.\n"
+                            "Please choose a different hotkey.",
+                            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
+                        )
+                        self.hotkey_txt.SetFocus()
+                        return
+                
+                # Check sounds
+                for s in project_data.get("sounds", []):
+                    if s.get("hotkey", "").strip().lower() == hotkey.lower():
+                        wx.MessageBox(
+                            f"The hotkey '{hotkey}' is already assigned to the sound '{s['name']}'.\n"
+                            "Please choose a different hotkey.",
+                            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
+                        )
+                        self.hotkey_txt.SetFocus()
+                        return
         event.Skip()
-
+ 
     def GetBusData(self):
         sel_mode = "exclusive" if self.mode_choice.GetSelection() == 0 else "layered"
         return {
             "name": self.name_txt.GetValue().strip(),
             "mode": sel_mode,
-            "volume": self.vol_slider.GetValue() / 100.0
+            "volume": self.vol_slider.GetValue() / 100.0,
+            "hotkey": self.hotkey_txt.GetValue().strip()
         }
-
-
+ 
+ 
 class ManageBusesDialog(wx.Dialog):
     """Dialog to list, add, edit, and remove project buses."""
     def __init__(self, parent, project_data):
@@ -554,9 +597,10 @@ class ManageBusesDialog(wx.Dialog):
         list_lbl = wx.StaticText(panel, label="Buses:")
         self.bus_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.bus_list, "Buses List")
-        self.bus_list.InsertColumn(0, "Name", width=180)
-        self.bus_list.InsertColumn(1, "Mode", width=100)
-        self.bus_list.InsertColumn(2, "Volume", width=80)
+        self.bus_list.InsertColumn(0, "Name", width=140)
+        self.bus_list.InsertColumn(1, "Mode", width=90)
+        self.bus_list.InsertColumn(2, "Volume", width=70)
+        self.bus_list.InsertColumn(3, "Hotkey", width=100)
         
         list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
         list_sizer.Add(self.bus_list, 1, wx.EXPAND)
@@ -589,13 +633,14 @@ class ManageBusesDialog(wx.Dialog):
         
         self.PopulateList()
         self.CenterOnParent()
-
+ 
     def PopulateList(self):
         self.bus_list.DeleteAllItems()
         for idx, bus in enumerate(self.project_data["buses"]):
             self.bus_list.InsertItem(idx, bus.get("name", "Unnamed"))
             self.bus_list.SetItem(idx, 1, bus.get("mode", "layered"))
             self.bus_list.SetItem(idx, 2, f"{int(bus.get('volume', 1.0) * 100)}%")
+            self.bus_list.SetItem(idx, 3, bus.get("hotkey", ""))
             # Associate bus dict to index
             self.bus_list.SetItemData(idx, idx)
 
