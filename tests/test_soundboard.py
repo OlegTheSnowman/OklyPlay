@@ -1034,6 +1034,7 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         # Test 3: Loop (Sequential)
         frame.PlaySound.reset_mock()
         bus["hotkey_action"] = "loop_sequential"
+        bus["track_crossfade_ms"] = 0
         frame.active_bus_playlists = {}
         
         frame.ToggleBusPlaylist(bus_id)
@@ -1045,6 +1046,75 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         frame.PlayNextSoundInBusPlaylist(bus_id)
         frame.PlaySound.assert_called_with(sounds[1], sounds[1]["default_scenario"])
         self.assertEqual(frame.active_bus_playlists[bus_id]["index"], 1)
+        
+        frame.Destroy()
+
+    def test_mainframe_track_to_track_crossfade_flow(self):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        bus_id = frame.project_data["buses"][0]["id"]
+        bus = frame.GetBusById(bus_id)
+        # Enable track crossfading (1000 ms)
+        bus["track_crossfade_ms"] = 1000
+        
+        # Add 2 sounds on this bus
+        frame.project_data["sounds"] = []
+        
+        # Mock a Channel
+        mock_channel = MagicMock()
+        mock_channel.is_done = False
+        mock_channel._fading_out = False
+        mock_channel.audio_data = np.zeros((220500, 2))  # 5 seconds at 44100Hz
+        mock_channel.position = 200000  # 4.53 seconds played, 0.47 seconds remaining (<= 1000ms)
+        mock_channel.sample_rate = 44100
+        
+        frame.PlaySound = MagicMock(return_value=mock_channel)
+        
+        # Start loop_sequential playlist
+        bus["hotkey_action"] = "loop_sequential"
+        
+        sound_data_1 = {
+            "id": "sound-1",
+            "name": "Sound 1",
+            "filename": "s1.wav",
+            "bus_id": bus_id,
+            "hotkey": "",
+            "default_scenario": {"volume": 1.0, "fade_in_ms": 0, "fade_out_ms": 0, "speed": 1.0, "loop": False},
+            "scenarios": [],
+            "missing": False
+        }
+        sound_data_2 = {
+            "id": "sound-2",
+            "name": "Sound 2",
+            "filename": "s2.wav",
+            "bus_id": bus_id,
+            "hotkey": "",
+            "default_scenario": {"volume": 1.0, "fade_in_ms": 0, "fade_out_ms": 0, "speed": 1.0, "loop": False},
+            "scenarios": [],
+            "missing": False
+        }
+        frame.project_data["sounds"] = [sound_data_1, sound_data_2]
+        
+        frame.ToggleBusPlaylist(bus_id)
+        
+        # Verify it played sound 1 overriding fade_in_ms to 1000
+        frame.PlaySound.assert_called_with(sound_data_1, {"volume": 1.0, "fade_in_ms": 1000, "fade_out_ms": 0, "speed": 1.0, "loop": False})
+        self.assertEqual(frame.active_bus_playlists[bus_id]["current_channel"], mock_channel)
+        
+        # Reset mock
+        frame.PlaySound.reset_mock()
+        mock_channel_2 = MagicMock()
+        frame.PlaySound.return_value = mock_channel_2
+        
+        # Trigger OnCleanupTimer. Since mock_channel has 0.47 seconds remaining, it should trigger crossfade
+        frame.OnCleanupTimer(None)
+        
+        # Verify it called start_fade_out on the first channel with 1000ms
+        mock_channel.start_fade_out.assert_called_with(1000)
+        # Verify it started the second sound with fade_in_ms overridden to 1000ms
+        frame.PlaySound.assert_called_with(sound_data_2, {"volume": 1.0, "fade_in_ms": 1000, "fade_out_ms": 0, "speed": 1.0, "loop": False})
+        self.assertEqual(frame.active_bus_playlists[bus_id]["current_channel"], mock_channel_2)
         
         frame.Destroy()
 
