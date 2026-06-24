@@ -117,6 +117,41 @@ class HotkeyCtrl(wx.TextCtrl):
                 event.Skip()
 
 
+class QuickHotkeyDialog(wx.Dialog):
+    """Simple dialog to assign a hotkey quickly to a sound."""
+    def __init__(self, parent, name, current_hotkey=""):
+        super().__init__(parent, title=f"Set Hotkey for {name}", size=(350, 160))
+        
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        label = wx.StaticText(panel, label=f"Press the key combination for '{name}':")
+        self.hotkey_ctrl = HotkeyCtrl(panel)
+        self.hotkey_ctrl.SetValue(current_hotkey)
+        self.hotkey_ctrl.hotkey_value = current_hotkey
+        
+        # Label the control for screen readers
+        label_control(self.hotkey_ctrl, f"Press the key combination you want to assign to '{name}'. Press Tab and then Enter to confirm, or Escape to cancel.")
+        
+        btn_sizer = wx.StdDialogButtonSizer()
+        ok_btn = wx.Button(panel, wx.ID_OK)
+        cancel_btn = wx.Button(panel, wx.ID_CANCEL)
+        btn_sizer.AddButton(ok_btn)
+        btn_sizer.AddButton(cancel_btn)
+        btn_sizer.Realize()
+        
+        sizer.Add(label, 0, wx.ALL | wx.EXPAND, 10)
+        sizer.Add(self.hotkey_ctrl, 0, wx.ALL | wx.EXPAND, 10)
+        sizer.Add(btn_sizer, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
+        
+        panel.SetSizer(sizer)
+        self.hotkey_ctrl.SetFocus()
+        self.CenterOnParent()
+        
+    def GetValue(self):
+        return self.hotkey_ctrl.GetValue().strip()
+
+
 class NewProjectDialog(wx.Dialog):
     """Dialog to create a new project with Name and Path fields."""
     def __init__(self, parent):
