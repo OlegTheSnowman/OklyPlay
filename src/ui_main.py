@@ -145,7 +145,7 @@ class MainFrame(wx.Frame):
             
         buses_menu.AppendSeparator()
         buses_menu.Append(ID_STOP_BUS, "Stop Current Bus\tEscape")
-        buses_menu.Append(ID_STOP_ALL, "Stop All Sounds\tCtrl+Escape")
+        buses_menu.Append(ID_STOP_ALL, "Stop All Sounds\tAlt+Escape")
         
         # Volume items
         buses_menu.AppendSeparator()
@@ -387,7 +387,7 @@ class MainFrame(wx.Frame):
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('E'), ID_EDIT_SCENARIOS),
             wx.AcceleratorEntry(wx.ACCEL_CTRL, ord('B'), ID_MANAGE_BUSES),
             wx.AcceleratorEntry(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, ID_STOP_BUS),
-            wx.AcceleratorEntry(wx.ACCEL_CTRL, wx.WXK_ESCAPE, ID_STOP_ALL),
+            wx.AcceleratorEntry(wx.ACCEL_ALT, wx.WXK_ESCAPE, ID_STOP_ALL),
             
             # Volume shortcuts
             wx.AcceleratorEntry(wx.ACCEL_CTRL, wx.WXK_UP, ID_BUS_VOL_UP),
