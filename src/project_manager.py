@@ -24,13 +24,15 @@ def create_project(path, name):
                 "id": music_bus_id,
                 "name": "Music",
                 "mode": "exclusive",
-                "volume": 0.7
+                "volume": 0.7,
+                "crossfade_ms": 500
             },
             {
                 "id": sfx_bus_id,
                 "name": "SFX",
                 "mode": "layered",
-                "volume": 1.0
+                "volume": 1.0,
+                "crossfade_ms": 0
             }
         ],
         "sounds": []
@@ -51,6 +53,10 @@ def load_project(path):
     # Basic schema validation/normalization
     if "buses" not in data:
         data["buses"] = []
+    for bus in data["buses"]:
+        if "crossfade_ms" not in bus:
+            # Default to 500 ms for exclusive buses, 0 ms for layered buses, or just 500 ms overall
+            bus["crossfade_ms"] = 500 if bus.get("mode") == "exclusive" else 0
     if "sounds" not in data:
         data["sounds"] = []
     if "master_volume" not in data:
