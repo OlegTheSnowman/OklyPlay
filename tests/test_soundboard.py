@@ -6,6 +6,8 @@ import numpy as np
 import tempfile
 import soundfile as sf
 import json
+import wx
+from unittest.mock import MagicMock, patch
 
 # Add src to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
@@ -13,6 +15,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 from accessible_speech import Speech
 from audio_engine import LoadedSound, Channel, AudioEngine
 import project_manager
+import ui_dialogs
+import ui_main
 
 class TestSpeechModule(unittest.TestCase):
     def test_singleton(self):
@@ -166,6 +170,445 @@ class TestProjectManager(unittest.TestCase):
         
         loaded = project_manager.load_project(import_path)
         self.assertEqual(loaded["name"], "ExportProj")
+
+
+class TestUIDialogs(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Running wx.App to verify dialog widget construction
+        cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
+    def test_instantiate_dialogs(self):
+        # 1. NewProjectDialog
+        dlg1 = ui_dialogs.NewProjectDialog(None)
+        self.assertIsNotNone(dlg1)
+        dlg1.Destroy()
+        
+        # 2. PreferencesDialog
+        devices = [(0, "Default Device"), (1, "Other Device")]
+        dlg2 = ui_dialogs.PreferencesDialog(None, devices, current_device_index=0, current_volume=0.8)
+        self.assertIsNotNone(dlg2)
+        dlg2.Destroy()
+        
+        # 3. AddEditSoundDialog
+        buses = [
+            {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0},
+            {"id": "bus-2", "name": "Music", "mode": "exclusive", "volume": 0.7}
+        ]
+        dlg3 = ui_dialogs.AddEditSoundDialog(None, buses, sound_data=None)
+        self.assertIsNotNone(dlg3)
+        dlg3.Destroy()
+        
+        # 4. AddEditBusDialog
+        dlg4 = ui_dialogs.AddEditBusDialog(None, bus_data=None)
+        self.assertIsNotNone(dlg4)
+        dlg4.Destroy()
+        
+        # 5. AddEditScenarioDialog
+        dlg5 = ui_dialogs.AddEditScenarioDialog(None, buses, scenario_data=None)
+        self.assertIsNotNone(dlg5)
+        dlg5.Destroy()
+        
+        # 6. ManageBusesDialog
+        project_data = {
+            "name": "Test Board",
+            "buses": buses,
+            "sounds": []
+        }
+        dlg6 = ui_dialogs.ManageBusesDialog(None, project_data)
+        self.assertIsNotNone(dlg6)
+        dlg6.Destroy()
+        
+        # 7. EditScenariosDialog
+        sound_data = {
+            "id": "sound-1",
+            "name": "Airhorn",
+            "filename": "horn.mp3",
+            "bus_id": "bus-1",
+            "default_scenario": {},
+            "scenarios": []
+        }
+        dlg7 = ui_dialogs.EditScenariosDialog(None, buses, sound_data)
+        self.assertIsNotNone(dlg7)
+        dlg7.Destroy()
+        
+        # 8. ProjectManagerDialog
+        recent = [{"name": "P1", "path": "D:\\p1"}, {"name": "P2", "path": "D:\\p2"}]
+        dlg8 = ui_dialogs.ProjectManagerDialog(None, recent, last_project_path="D:\\p1")
+        self.assertIsNotNone(dlg8)
+        dlg8.Destroy()
+
+
+class TestMainFrame(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
+    def setUp(self):
+        # Temp directories
+        self.temp_dir = tempfile.mkdtemp()
+        self.temp_user_data_dir = tempfile.mkdtemp()
+        
+        # Mock StandardPaths
+        self.mock_sp = MagicMock()
+        self.mock_sp.GetUserDataDir.return_value = self.temp_user_data_dir
+        self.patcher_sp = patch('wx.StandardPaths.Get', return_value=self.mock_sp)
+        self.patcher_sp.start()
+        
+        # Mock sounddevice output stream so it doesn't try to open actual audio hardware
+        self.mock_sd_stream = MagicMock()
+        self.patcher_sd = patch('sounddevice.OutputStream', return_value=self.mock_sd_stream)
+        self.patcher_sd.start()
+
+        # Mock speech auto-output
+        self.patcher_speech = patch('accessible_speech.Speech.speak')
+        self.mock_speak = self.patcher_speech.start()
+
+        # Setup standard test project
+        self.proj_path = os.path.join(self.temp_dir, "MyTestProject")
+        self.proj_data = project_manager.create_project(self.proj_path, "Cool Board")
+        
+        # Create a mock sound file to import
+        self.sound_source = os.path.join(self.temp_dir, "horn.wav")
+        sf.write(self.sound_source, np.zeros((1000, 2)), 44100)
+
+    def tearDown(self):
+        self.patcher_speech.stop()
+        self.patcher_sd.stop()
+        self.patcher_sp.stop()
+        shutil.rmtree(self.temp_dir)
+        shutil.rmtree(self.temp_user_data_dir)
+
+    def test_mainframe_init_and_load_settings(self):
+        # Test default init (no settings exist yet)
+        frame = ui_main.MainFrame(None)
+        self.assertIsNotNone(frame)
+        self.assertEqual(frame.settings["recent_projects"], [])
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_mainframe_load_project(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        self.assertEqual(frame.project_dir, self.proj_path)
+        self.assertEqual(frame.project_data["name"], "Cool Board")
+        self.assertEqual(len(frame.project_data["buses"]), 2)
+        
+        # Check settings updated
+        self.assertEqual(frame.settings["last_project_path"], self.proj_path)
+        self.assertEqual(frame.settings["recent_projects"][0]["path"], self.proj_path)
+        
+        # Clean up
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_mainframe_load_project_failure(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        # Try to load non-existent path
+        with patch('wx.CallAfter', lambda f, *a, **k: f(*a, **k)):
+            with patch.object(frame, 'OnManageProjects') as mock_manage:
+                frame.LoadProject("non_existent_path")
+                self.assertTrue(mock_manage.called)
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_volume_adjustments(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        # Test bus volume adjustment
+        bus = frame.GetSelectedBus()
+        initial_bus_vol = bus["volume"]
+        
+        # Vol Up (increases by 0.05)
+        frame.OnBusVolUp(None)
+        self.assertAlmostEqual(bus["volume"], min(initial_bus_vol + 0.05, 1.0))
+        
+        # Vol Down (decreases by 0.05)
+        frame.OnBusVolDown(None)
+        frame.OnBusVolDown(None)
+        self.assertAlmostEqual(bus["volume"], min(initial_bus_vol + 0.05, 1.0) - 0.10)
+
+        # Master Vol Up/Down
+        initial_master_vol = frame.audio_engine._master_volume
+        frame.OnMasterVolUp(None)
+        self.assertAlmostEqual(frame.audio_engine._master_volume, min(initial_master_vol + 0.05, 1.0))
+        frame.OnMasterVolDown(None)
+        frame.OnMasterVolDown(None)
+        self.assertAlmostEqual(frame.audio_engine._master_volume, min(initial_master_vol + 0.05, 1.0) - 0.10)
+        
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_bus_switching(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        # Initially first bus selected
+        first_bus_id = frame.project_data["buses"][0]["id"]
+        self.assertEqual(frame.selected_bus_id, first_bus_id)
+        
+        # Switch to Bus 2 (Ctrl+2 triggers OnSwitchBusHotkey with ID_BUS_BASE + 2)
+        event = wx.CommandEvent(wx.wxEVT_MENU, ui_main.ID_BUS_BASE + 2)
+        frame.OnSwitchBusHotkey(event)
+        second_bus_id = frame.project_data["buses"][1]["id"]
+        self.assertEqual(frame.selected_bus_id, second_bus_id)
+        
+        # Switch back to Bus 1
+        event = wx.CommandEvent(wx.wxEVT_MENU, ui_main.ID_BUS_BASE + 1)
+        frame.OnSwitchBusHotkey(event)
+        self.assertEqual(frame.selected_bus_id, first_bus_id)
+        
+        frame.Destroy()
+
+    def test_hotkey_parsing(self):
+        frame = ui_main.MainFrame(None)
+        
+        # Test valid parsing
+        accel1 = frame.ParseHotkeyToAccel("Ctrl+1", 1001)
+        self.assertIsNotNone(accel1)
+        self.assertEqual(accel1.GetFlags(), wx.ACCEL_CTRL | wx.ACCEL_NORMAL)
+        self.assertEqual(accel1.GetKeyCode(), ord('1'))
+        
+        accel2 = frame.ParseHotkeyToAccel("Ctrl+Alt+Shift+F5", 1002)
+        self.assertIsNotNone(accel2)
+        self.assertEqual(accel2.GetFlags(), wx.ACCEL_CTRL | wx.ACCEL_ALT | wx.ACCEL_SHIFT)
+        self.assertEqual(accel2.GetKeyCode(), wx.WXK_F5)
+        
+        accel3 = frame.ParseHotkeyToAccel("Space", 1003)
+        self.assertIsNotNone(accel3)
+        self.assertEqual(accel3.GetKeyCode(), wx.WXK_SPACE)
+
+        accel4 = frame.ParseHotkeyToAccel("Enter", 1004)
+        self.assertIsNotNone(accel4)
+        self.assertEqual(accel4.GetKeyCode(), wx.WXK_RETURN)
+
+        # Invalid hotkey
+        accel_invalid = frame.ParseHotkeyToAccel("invalid_key_name", 1005)
+        self.assertIsNone(accel_invalid)
+        
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_stop_commands(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        # Stop current bus
+        with patch.object(frame.audio_engine, 'stop_bus') as mock_stop_bus:
+            frame.OnStopBus(None)
+            self.assertTrue(mock_stop_bus.called)
+            
+        # Stop all
+        with patch.object(frame.audio_engine, 'stop_all') as mock_stop_all:
+            frame.OnStopAll(None)
+            self.assertTrue(mock_stop_all.called)
+            
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.NewProjectDialog')
+    def test_new_project_flow(self, mock_new_dlg_cls, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        mock_dlg = MagicMock()
+        mock_dlg.ShowModal.return_value = wx.ID_OK
+        mock_dlg.GetProjectName.return_value = "Brand New Board"
+        new_proj_path = os.path.join(self.temp_dir, "BrandNewProject")
+        mock_dlg.GetProjectPath.return_value = new_proj_path
+        mock_new_dlg_cls.return_value = mock_dlg
+        
+        frame.OnNewProject(None)
+        self.assertEqual(frame.project_dir, new_proj_path)
+        self.assertEqual(frame.project_data["name"], "Brand New Board")
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.AddEditSoundDialog')
+    def test_add_sound_flow(self, mock_sound_dlg_cls, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        mock_dlg = MagicMock()
+        mock_dlg.ShowModal.return_value = wx.ID_OK
+        
+        # sound_data returned by dialog includes full absolute path
+        new_sound_data = {
+            "id": "sound-new-123",
+            "name": "Siren",
+            "filepath_full": self.sound_source,
+            "bus_id": frame.project_data["buses"][0]["id"],
+            "hotkey": "F3",
+            "default_scenario": {
+                "volume": 0.9,
+                "fade_in_ms": 100,
+                "fade_out_ms": 100,
+                "speed": 1.0,
+                "loop": False
+            },
+            "scenarios": []
+        }
+        mock_dlg.GetSoundData.return_value = new_sound_data.copy()
+        mock_sound_dlg_cls.return_value = mock_dlg
+        
+        frame.OnAddSound(None)
+        
+        # Verify sound was added to project data
+        sounds = frame.project_data["sounds"]
+        self.assertEqual(len(sounds), 1)
+        self.assertEqual(sounds[0]["name"], "Siren")
+        self.assertEqual(sounds[0]["filename"], "horn.wav")
+        self.assertEqual(sounds[0]["hotkey"], "F3")
+        
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.YES)
+    def test_remove_sound_flow(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        # Add a mock sound manually to metadata first
+        sound_meta = {
+            "id": "sound-meta-1",
+            "name": "Existing Sound",
+            "filename": "horn.wav",
+            "bus_id": frame.project_data["buses"][0]["id"],
+            "hotkey": "F4",
+            "default_scenario": {},
+            "scenarios": []
+        }
+        frame.project_data["sounds"].append(sound_meta)
+        frame.RefreshSoundsList()
+        
+        # Select the item
+        frame.sounds_list.Select(0)
+        
+        # Trigger remove
+        frame.OnRemoveSound(None)
+        
+        # Check removed
+        self.assertEqual(len(frame.project_data["sounds"]), 0)
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.PreferencesDialog')
+    def test_preferences_flow(self, mock_pref_dlg_cls, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        mock_dlg = MagicMock()
+        mock_dlg.ShowModal.return_value = wx.ID_OK
+        mock_dlg.GetSelectedDeviceIndex.return_value = 1
+        mock_dlg.GetMasterVolume.return_value = 0.5
+        mock_pref_dlg_cls.return_value = mock_dlg
+        
+        frame.OnPreferences(None)
+        
+        self.assertEqual(frame.audio_engine._device_index, 1)
+        self.assertEqual(frame.audio_engine._master_volume, 0.5)
+        self.assertEqual(frame.project_data["output_device"], 1)
+        self.assertEqual(frame.project_data["master_volume"], 0.5)
+        frame.Destroy()
+
+
+class TestProjectManagerDialogActions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.p1_path = os.path.join(self.temp_dir, "Proj1")
+        self.p2_path = os.path.join(self.temp_dir, "Proj2")
+        os.makedirs(self.p1_path, exist_ok=True)
+        os.makedirs(self.p2_path, exist_ok=True)
+        
+        self.recent = [
+            {"name": "Proj1", "path": self.p1_path},
+            {"name": "Proj2", "path": self.p2_path}
+        ]
+        
+        self.patcher_speech = patch('accessible_speech.Speech.speak')
+        self.mock_speak = self.patcher_speech.start()
+
+    def tearDown(self):
+        self.patcher_speech.stop()
+        shutil.rmtree(self.temp_dir)
+
+    def test_dialog_init_and_list_population(self):
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent, last_project_path=self.p2_path)
+        self.assertEqual(dlg.projects_list.GetItemCount(), 2)
+        # Proj2 (index 1) should be selected as last_project_path matches
+        self.assertEqual(dlg.projects_list.GetFirstSelected(), 1)
+        dlg.Destroy()
+
+    def test_dialog_actions(self):
+        # Open
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
+        dlg.projects_list.Select(0)
+        with patch.object(dlg, 'EndModal'):
+            dlg.OnOpen(None)
+        self.assertEqual(dlg.action, 'open')
+        self.assertEqual(dlg.selected_project_path, self.p1_path)
+        dlg.Destroy()
+
+        # New
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
+        with patch.object(dlg, 'EndModal'):
+            dlg.OnNew(None)
+        self.assertEqual(dlg.action, 'create')
+        dlg.Destroy()
+
+        # Browse
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
+        with patch.object(dlg, 'EndModal'):
+            dlg.OnBrowse(None)
+        self.assertEqual(dlg.action, 'browse')
+        dlg.Destroy()
+
+        # Exit
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
+        with patch.object(dlg, 'EndModal'):
+            dlg.OnExitBtn(None)
+        self.assertEqual(dlg.action, 'exit')
+        dlg.Destroy()
+
+    def test_remove_action(self):
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
+        dlg.projects_list.Select(0)
+        dlg.OnRemove(None)
+        self.assertEqual(len(dlg.recent_projects), 1)
+        self.assertEqual(dlg.recent_projects[0]["name"], "Proj2")
+        self.assertEqual(dlg.projects_list.GetItemCount(), 1)
+        dlg.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.YES)
+    def test_delete_action_confirmed(self, mock_msgbox):
+        dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
+        dlg.projects_list.Select(0)
+        
+        self.assertTrue(os.path.exists(self.p1_path))
+        
+        dlg.OnDelete(None)
+        
+        self.assertFalse(os.path.exists(self.p1_path))
+        self.assertEqual(len(dlg.recent_projects), 1)
+        self.assertEqual(dlg.recent_projects[0]["name"], "Proj2")
+        dlg.Destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
