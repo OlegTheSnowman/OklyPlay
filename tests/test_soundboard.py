@@ -912,6 +912,58 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         self.assertFalse(frame.active_bus_playlists[bus_id]["active"])
         frame.Destroy()
 
+    def test_mainframe_crossfade_flow(self):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        # Ensure we have at least one exclusive bus with crossfade_ms set
+        exclusive_bus = None
+        for bus in frame.project_data["buses"]:
+            if bus.get("mode") == "exclusive":
+                exclusive_bus = bus
+                break
+                
+        if not exclusive_bus:
+            # Fallback/create one
+            exclusive_bus = {
+                "id": "music_bus_id",
+                "name": "Music",
+                "mode": "exclusive",
+                "volume": 0.7,
+                "crossfade_ms": 350
+            }
+            frame.project_data["buses"].append(exclusive_bus)
+        else:
+            exclusive_bus["crossfade_ms"] = 350
+            
+        # Add a sound on this exclusive bus
+        sound_data = {
+            "id": "exclusive-sound-1",
+            "name": "Theme Music",
+            "filename": "theme.wav",
+            "bus_id": exclusive_bus["id"],
+            "hotkey": "",
+            "default_scenario": {"volume": 1.0, "fade_in_ms": 100, "fade_out_ms": 100, "speed": 1.0, "loop": False},
+            "scenarios": []
+        }
+        frame.project_data["sounds"].append(sound_data)
+        
+        # Mock AudioEngine.play to verify arguments passed to it
+        mock_play = MagicMock()
+        frame.audio_engine.play = mock_play
+        
+        # Ensure sound is not marked as missing and mock os.path.exists
+        sound_data["missing"] = False
+        with patch('os.path.exists', return_value=True):
+            frame.PlaySound(sound_data, sound_data["default_scenario"])
+            
+        # Check that audio_engine.play was called with exclusive_bus_ids containing our exclusive bus ID and crossfade_ms=350
+        mock_play.assert_called_once()
+        args, kwargs = mock_play.call_args
+        self.assertEqual(kwargs.get("crossfade_ms"), 350)
+        self.assertIn(exclusive_bus["id"], kwargs.get("exclusive_bus_ids"))
+        frame.Destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

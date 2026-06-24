@@ -957,16 +957,28 @@ class MainFrame(wx.Frame):
         sounds_dir = os.path.join(self.project_dir, "sounds")
         filepath = os.path.join(sounds_dir, sound["filename"])
         
-        # Determine bus mode
+        # Determine bus mode and crossfade
         bus_id = scenario.get("bus_id") or sound["bus_id"]
         bus_mode = "layered"
+        crossfade_ms = 500
         for b in self.project_data["buses"]:
             if b["id"] == bus_id:
                 bus_mode = b["mode"]
+                crossfade_ms = b.get("crossfade_ms", 500 if bus_mode == "exclusive" else 0)
                 break
                 
+        exclusive_bus_ids = {b["id"] for b in self.project_data["buses"] if b.get("mode") == "exclusive"}
+        
         try:
-            ch = self.audio_engine.play(filepath, scenario, bus_id, bus_mode, sound_name=sound["name"])
+            ch = self.audio_engine.play(
+                filepath, 
+                scenario, 
+                bus_id, 
+                bus_mode, 
+                exclusive_bus_ids=exclusive_bus_ids, 
+                crossfade_ms=crossfade_ms, 
+                sound_name=sound["name"]
+            )
             self.UpdateStatusBar()
             return ch
         except Exception as e:
