@@ -511,7 +511,7 @@ class ManageBusesDialog(wx.Dialog):
             self.bus_list.SetItem(idx, 1, bus["mode"])
             self.bus_list.SetItem(idx, 2, f"{int(bus['volume'] * 100)}%")
             # Associate bus dict to index
-            self.bus_list.SetItemPtrData(idx, idx)
+            self.bus_list.SetItemData(idx, idx)
 
     def OnAddBus(self, event):
         dlg = AddEditBusDialog(self)
@@ -772,7 +772,7 @@ class EditScenariosDialog(wx.Dialog):
                         bus_name = b["name"]
                         break
             self.scen_list.SetItem(idx, 6, bus_name)
-            self.scen_list.SetItemPtrData(idx, idx)
+            self.scen_list.SetItemData(idx, idx)
 
     def OnAddScenario(self, event):
         dlg = AddEditScenarioDialog(self, self.buses)
@@ -920,7 +920,7 @@ class ProjectManagerDialog(wx.Dialog):
         for idx, proj in enumerate(self.recent_projects):
             self.projects_list.InsertItem(idx, proj["name"])
             self.projects_list.SetItem(idx, 1, proj["path"])
-            self.projects_list.SetItemPtrData(idx, idx)
+            self.projects_list.SetItemData(idx, idx)
             if last_project_path and proj["path"] == last_project_path:
                 select_idx = idx
                 
