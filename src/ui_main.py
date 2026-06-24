@@ -48,6 +48,7 @@ class MainFrame(wx.Frame):
         self.hotkey_id_map = {}
         self.bus_hotkey_map = {}
         self.active_bus_playlists = {}
+        self.bus_sequential_indices = {}
         
         # Initialize Audio Engine
         self.audio_engine = AudioEngine()
@@ -1067,27 +1068,49 @@ class MainFrame(wx.Frame):
         if not bus:
             return
             
+        action = bus.get("hotkey_action", "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle")
+        
         playlist = self.active_bus_playlists.get(bus_id)
         if playlist and playlist["active"]:
             playlist["active"] = False
             self.audio_engine.stop_bus(bus_id)
             Speech.speak(f"Stopped playlist for bus {bus['name']}")
-        else:
-            # Gather all non-missing sounds belonging to this bus
-            sounds = [s for s in self.project_data.get("sounds", []) if s.get("bus_id") == bus_id and not s.get("missing")]
-            if not sounds:
-                Speech.speak(f"No sounds in bus {bus['name']} to play.")
-                return
-                
-            # Stop any existing playback on this bus first
-            self.audio_engine.stop_bus(bus_id)
+            return
             
-            # Shuffle and build the queue
+        # Gather all non-missing sounds belonging to this bus
+        sounds = [s for s in self.project_data.get("sounds", []) if s.get("bus_id") == bus_id and not s.get("missing")]
+        if not sounds:
+            Speech.speak(f"No sounds in bus {bus['name']} to play.")
+            return
+            
+        # Stop any existing playback on this bus first
+        self.audio_engine.stop_bus(bus_id)
+        
+        if action == "single_shuffle":
+            import random
+            sound = random.choice(sounds)
+            ch = self.PlaySound(sound, sound["default_scenario"])
+            if ch:
+                Speech.speak(f"Playing random sound from bus {bus['name']}: {sound['name']}")
+            else:
+                Speech.speak(f"Failed to play sound {sound['name']} on bus {bus['name']}.")
+                
+        elif action == "single_sequential":
+            idx = self.bus_sequential_indices.get(bus_id, 0)
+            if idx >= len(sounds):
+                idx = 0
+            sound = sounds[idx]
+            ch = self.PlaySound(sound, sound["default_scenario"])
+            if ch:
+                self.bus_sequential_indices[bus_id] = idx + 1
+                Speech.speak(f"Playing sound {idx + 1} of {len(sounds)} from bus {bus['name']}: {sound['name']}")
+            else:
+                Speech.speak(f"Failed to play sound {sound['name']} on bus {bus['name']}.")
+                
+        elif action == "loop_shuffle":
             import random
             shuffled_sounds = list(sounds)
             random.shuffle(shuffled_sounds)
-            
-            # Start the first sound
             sound = shuffled_sounds[0]
             ch = self.PlaySound(sound, sound["default_scenario"])
             if ch:
@@ -1095,7 +1118,23 @@ class MainFrame(wx.Frame):
                     "shuffled_sounds": shuffled_sounds,
                     "index": 0,
                     "current_channel": ch,
-                    "active": True
+                    "active": True,
+                    "mode": "loop_shuffle"
+                }
+                Speech.speak(f"Starting playlist for bus {bus['name']}. Playing {sound['name']}.")
+            else:
+                Speech.speak(f"Failed to play first sound in playlist for bus {bus['name']}.")
+                
+        elif action == "loop_sequential":
+            sound = sounds[0]
+            ch = self.PlaySound(sound, sound["default_scenario"])
+            if ch:
+                self.active_bus_playlists[bus_id] = {
+                    "sounds": sounds,
+                    "index": 0,
+                    "current_channel": ch,
+                    "active": True,
+                    "mode": "loop_sequential"
                 }
                 Speech.speak(f"Starting playlist for bus {bus['name']}. Playing {sound['name']}.")
             else:
@@ -1106,19 +1145,25 @@ class MainFrame(wx.Frame):
         if not playlist or not playlist["active"]:
             return
             
-        shuffled_sounds = playlist["shuffled_sounds"]
-        idx = playlist["index"] + 1
+        mode = playlist.get("mode", "loop_shuffle")
         
-        # If we reached the end of the queue, reshuffle and start over
-        if idx >= len(shuffled_sounds):
-            import random
-            random.shuffle(shuffled_sounds)
-            idx = 0
+        if mode == "loop_shuffle":
+            shuffled_sounds = playlist["shuffled_sounds"]
+            idx = playlist["index"] + 1
+            if idx >= len(shuffled_sounds):
+                import random
+                random.shuffle(shuffled_sounds)
+                idx = 0
+            playlist["index"] = idx
+            sound = shuffled_sounds[idx]
+        else: # loop_sequential
+            sounds = playlist["sounds"]
+            idx = playlist["index"] + 1
+            if idx >= len(sounds):
+                idx = 0
+            playlist["index"] = idx
+            sound = sounds[idx]
             
-        playlist["index"] = idx
-        sound = shuffled_sounds[idx]
-        
-        bus = self.GetBusById(bus_id)
         # Play next sound
         ch = self.PlaySound(sound, sound["default_scenario"])
         if ch:
