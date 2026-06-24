@@ -1047,6 +1047,23 @@ class MainFrame(wx.Frame):
                             else:
                                 # Finished naturally! Proceed to next track.
                                 self.PlayNextSoundInBusPlaylist(bus_id)
+                                
+            # Check for early track crossfades on active playlists
+            for bus_id, playlist in list(self.active_bus_playlists.items()):
+                if playlist["active"]:
+                    ch = playlist.get("current_channel")
+                    if ch and not ch.is_done and not ch._fading_out:
+                        bus = self.GetBusById(bus_id)
+                        if bus:
+                            track_crossfade_ms = bus.get("track_crossfade_ms", 0)
+                            if track_crossfade_ms > 0:
+                                remaining_samples = len(ch.audio_data) - ch.position
+                                remaining_ms = (remaining_samples / ch.sample_rate) * 1000
+                                total_ms = (len(ch.audio_data) / ch.sample_rate) * 1000
+                                if total_ms > track_crossfade_ms and remaining_ms <= track_crossfade_ms:
+                                    # Trigger track crossfade!
+                                    ch.start_fade_out(track_crossfade_ms)
+                                    self.PlayNextSoundInBusPlaylist(bus_id)
 
     def GetBusById(self, bus_id):
         if not self.project_data:
@@ -1069,6 +1086,7 @@ class MainFrame(wx.Frame):
             return
             
         action = bus.get("hotkey_action", "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle")
+        track_crossfade_ms = bus.get("track_crossfade_ms", 0)
         
         playlist = self.active_bus_playlists.get(bus_id)
         if playlist and playlist["active"]:
@@ -1112,7 +1130,10 @@ class MainFrame(wx.Frame):
             shuffled_sounds = list(sounds)
             random.shuffle(shuffled_sounds)
             sound = shuffled_sounds[0]
-            ch = self.PlaySound(sound, sound["default_scenario"])
+            scenario = dict(sound["default_scenario"])
+            if track_crossfade_ms > 0:
+                scenario["fade_in_ms"] = track_crossfade_ms
+            ch = self.PlaySound(sound, scenario)
             if ch:
                 self.active_bus_playlists[bus_id] = {
                     "shuffled_sounds": shuffled_sounds,
@@ -1127,7 +1148,10 @@ class MainFrame(wx.Frame):
                 
         elif action == "loop_sequential":
             sound = sounds[0]
-            ch = self.PlaySound(sound, sound["default_scenario"])
+            scenario = dict(sound["default_scenario"])
+            if track_crossfade_ms > 0:
+                scenario["fade_in_ms"] = track_crossfade_ms
+            ch = self.PlaySound(sound, scenario)
             if ch:
                 self.active_bus_playlists[bus_id] = {
                     "sounds": sounds,
@@ -1146,6 +1170,8 @@ class MainFrame(wx.Frame):
             return
             
         mode = playlist.get("mode", "loop_shuffle")
+        bus = self.GetBusById(bus_id)
+        track_crossfade_ms = bus.get("track_crossfade_ms", 0) if bus else 0
         
         if mode == "loop_shuffle":
             shuffled_sounds = playlist["shuffled_sounds"]
@@ -1164,8 +1190,11 @@ class MainFrame(wx.Frame):
             playlist["index"] = idx
             sound = sounds[idx]
             
-        # Play next sound
-        ch = self.PlaySound(sound, sound["default_scenario"])
+        # Play next sound overriding fade_in_ms if track crossfading is enabled
+        scenario = dict(sound["default_scenario"])
+        if track_crossfade_ms > 0:
+            scenario["fade_in_ms"] = track_crossfade_ms
+        ch = self.PlaySound(sound, scenario)
         if ch:
             playlist["current_channel"] = ch
             Speech.speak(f"Playing next: {sound['name']}")
