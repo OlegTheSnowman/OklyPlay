@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to OklyPlay are documented here.  
 This project follows [Semantic Versioning](https://semver.org/).
@@ -19,6 +19,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   - `Ctrl+I` opens an additional import picker from inside the manager.
 - **Bus Hotkeys & Loop Playback** - Assign a hotkey to a bus; triggering it shuffles and loops through all sounds on that bus continuously, ideal for background music or ambient playlists.
 - **Quick Sound Hotkey (`Alt+K`)** - Press `Alt+K` while a sound is selected to assign or change its hotkey without opening the full Edit dialog.
+- **Exclusive Bus Crossfading & Editor** - Automatically crossfade between exclusive buses.
+  - Playing a sound on an exclusive bus now fades out all channels on other exclusive buses using a configurable crossfade duration.
+  - Layered buses remain unaffected and continue playing on top.
+  - A **Crossfade (ms)** field has been added to the bus editor (`AddEditBusDialog`) and the bus management list (`ManageBusesDialog`).
 
 ### Changed
 
