@@ -58,12 +58,13 @@ class LoadedSound:
 
 class Channel:
     """Represents a single active sound playback instance with fade capabilities."""
-    def __init__(self, sound_data, volume, fade_in_ms, fade_out_ms, loop, bus_id, sample_rate):
+    def __init__(self, sound_data, volume, fade_in_ms, fade_out_ms, loop, bus_id, sample_rate, sound_name=""):
         self.audio_data = sound_data
         self.target_volume = float(volume)
         self.loop = bool(loop)
         self.bus_id = bus_id
         self.sample_rate = sample_rate
+        self.sound_name = sound_name
         
         self.position = 0
         self.is_done = False
@@ -224,7 +225,7 @@ class AudioEngine:
             
         np.clip(outdata, -1.0, 1.0, out=outdata)
 
-    def play(self, filepath, scenario, bus_id, bus_mode):
+    def play(self, filepath, scenario, bus_id, bus_mode, sound_name=""):
         """Plays a sound on a bus with a given scenario preset."""
         if filepath not in self._loaded_sounds:
             self._loaded_sounds[filepath] = LoadedSound(filepath, self.sample_rate)
@@ -249,7 +250,8 @@ class AudioEngine:
             fade_out_ms=fade_out_ms,
             loop=scenario.get('loop', False),
             bus_id=bus_id,
-            sample_rate=self.sample_rate
+            sample_rate=self.sample_rate,
+            sound_name=sound_name
         )
         
         # Copy-on-write list assignment
@@ -284,8 +286,11 @@ class AudioEngine:
         return sum(1 for ch in self._active_channels if not ch.is_done)
 
     def cleanup_done_channels(self):
-        """Filters out finished channels. Call from main thread periodically."""
-        self._active_channels = [ch for ch in self._active_channels if not ch.is_done]
+        """Filters out finished channels and returns them. Call from main thread periodically."""
+        done = [ch for ch in self._active_channels if ch.is_done]
+        if done:
+            self._active_channels = [ch for ch in self._active_channels if not ch.is_done]
+        return done
 
     def get_output_devices(self):
         """Returns a list of tuples (device_index, device_name) for output devices."""
