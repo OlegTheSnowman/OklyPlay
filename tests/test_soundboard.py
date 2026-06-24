@@ -694,6 +694,9 @@ class TestAccessibilityLabeling(unittest.TestCase):
         self.assertEqual(dlg3.fade_in_spin.GetAccessible().GetName(0)[1], "Fade In Milliseconds")
         self.assertEqual(dlg3.fade_out_spin.GetAccessible().GetName(0)[1], "Fade Out Milliseconds")
         self.assertEqual(dlg3.speed_spin.GetAccessible().GetName(0)[1], "Playback Speed Multiplier")
+        # Assert internal child TextCtrl of SpinCtrlDouble is labeled
+        speed_text_child = next(c for c in dlg3.speed_spin.GetChildren() if isinstance(c, wx.TextCtrl))
+        self.assertEqual(speed_text_child.GetAccessible().GetName(0)[1], "Playback Speed Multiplier")
         self.assertEqual(dlg3.loop_chk.GetAccessible().GetName(0)[1], "Loop Audio")
         dlg3.Destroy()
         
