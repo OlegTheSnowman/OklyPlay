@@ -128,6 +128,59 @@ class TestAudioEngine(unittest.TestCase):
         self.assertFalse(ch3._fading_out)
         self.assertFalse(ch2._fading_out)
 
+    def test_bus_ducking(self):
+        engine = AudioEngine(sample_rate=self.sample_rate)
+        
+        # Configure buses:
+        # music: duckable = True
+        # sfx: duckable = False, duck_factor = 0.3 (ducks other buses to 30%)
+        engine.set_bus_duckable("music", True)
+        engine.set_bus_duck_factor("music", 1.0)
+        
+        engine.set_bus_duckable("sfx", False)
+        engine.set_bus_duck_factor("sfx", 0.3)
+        
+        # Set bus volumes
+        engine.set_bus_volume("music", 1.0)
+        engine.set_bus_volume("sfx", 1.0)
+        engine.set_master_volume(1.0)
+        
+        # Start playing a sound on the music bus
+        music_ch = engine.play(self.wav_path, {"volume": 1.0, "loop": True}, bus_id="music", bus_mode="exclusive")
+        
+        # Render a chunk when only music is playing
+        outdata = np.zeros((1000, 2), dtype=np.float32)
+        engine._callback(outdata, 1000, None, None)
+        
+        # Verify the music bus is not ducked yet (factor is 1.0)
+        self.assertEqual(engine._bus_current_duck_factors.get("music", 1.0), 1.0)
+        
+        # Start playing a sound on the sfx bus (which triggers ducking)
+        sfx_ch = engine.play(self.wav_path, {"volume": 1.0, "loop": False}, bus_id="sfx", bus_mode="layered")
+        
+        # Render a few chunks to let ducking attack phase complete
+        # Attack phase: max_change per callback = 1000 / (0.15 * 44100) = 0.151
+        # It needs about 5-6 callbacks to drop from 1.0 to 0.3
+        for _ in range(10):
+            engine._callback(outdata, 1000, None, None)
+            
+        # Verify that the music bus has been ducked close to 0.3
+        self.assertAlmostEqual(engine._bus_current_duck_factors.get("music"), 0.3, places=2)
+        
+        # Stop the sfx channel
+        engine.stop_channel(sfx_ch, fade_out_ms=0)
+        engine.cleanup_done_channels()
+        
+        # Render a few chunks to let ducking release phase complete
+        # Release phase: max_change per callback = 1000 / (0.4 * 44100) = 0.056
+        # It needs about 13 callbacks to rise from 0.3 to 1.0
+        for _ in range(20):
+            engine._callback(outdata, 1000, None, None)
+            
+        # Verify that the music bus recovered to 1.0
+        self.assertAlmostEqual(engine._bus_current_duck_factors.get("music"), 1.0, places=2)
+
+
 
 class TestProjectManager(unittest.TestCase):
     def setUp(self):
