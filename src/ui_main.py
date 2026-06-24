@@ -217,14 +217,19 @@ class MainFrame(wx.Frame):
             except Exception:
                 pass
                 
-        if "recent_projects" not in self.settings:
+        if "recent_projects" not in self.settings or not isinstance(self.settings["recent_projects"], list):
             self.settings["recent_projects"] = []
             
-        # Clean up missing directories from recent list
-        self.settings["recent_projects"] = [
-            p for p in self.settings["recent_projects"]
-            if os.path.exists(p["path"])
-        ]
+        # Clean up missing directories from recent list robustly
+        cleaned_recent = []
+        for p in self.settings["recent_projects"]:
+            if isinstance(p, dict) and "path" in p and p["path"]:
+                try:
+                    if os.path.exists(p["path"]):
+                        cleaned_recent.append(p)
+                except Exception:
+                    pass
+        self.settings["recent_projects"] = cleaned_recent
 
     def SaveSettings(self):
         sp = wx.StandardPaths.Get()
@@ -362,7 +367,7 @@ class MainFrame(wx.Frame):
             self.sounds_list.SetItem(idx, 2, f"{scen_count} scenarios")
             
             # Associate item with index in current_bus_sounds
-            self.sounds_list.SetItemPtrData(idx, idx)
+            self.sounds_list.SetItemData(idx, idx)
 
     def RebuildAccelerators(self):
         """Rebuilds the accelerator table, combining standard menu bindings and sound-level hotkeys."""
