@@ -748,6 +748,145 @@ class TestAccessibilityLabeling(unittest.TestCase):
         dlg8.Destroy()
 
 
+class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.temp_user_data_dir = tempfile.mkdtemp()
+        
+        self.mock_sp = MagicMock()
+        self.mock_sp.GetUserDataDir.return_value = self.temp_user_data_dir
+        self.patcher_sp = patch('wx.StandardPaths.Get', return_value=self.mock_sp)
+        self.patcher_sp.start()
+        
+        self.mock_sd_stream = MagicMock()
+        self.patcher_sd = patch('sounddevice.OutputStream', return_value=self.mock_sd_stream)
+        self.patcher_sd.start()
+
+        self.patcher_speech = patch('accessible_speech.Speech.speak')
+        self.mock_speak = self.patcher_speech.start()
+
+        self.proj_path = os.path.join(self.temp_dir, "MyTestProject")
+        self.proj_data = project_manager.create_project(self.proj_path, "Cool Board")
+        
+        self.sound_source = os.path.join(self.temp_dir, "horn.wav")
+        sf.write(self.sound_source, np.zeros((1000, 2)), 44100)
+
+    def tearDown(self):
+        self.patcher_speech.stop()
+        self.patcher_sd.stop()
+        self.patcher_sp.stop()
+        shutil.rmtree(self.temp_dir)
+        shutil.rmtree(self.temp_user_data_dir)
+
+    def test_quick_hotkey_dialog_accessibility(self):
+        dlg = ui_dialogs.QuickHotkeyDialog(None, "Airhorn", "F5")
+        self.assertIsNotNone(dlg)
+        self.assertEqual(dlg.hotkey_ctrl.GetValue(), "F5")
+        # Check accessibility label
+        self.assertEqual(dlg.hotkey_ctrl.GetAccessible().GetName(0)[1], "Press the key combination you want to assign to 'Airhorn'. Press Tab and then Enter to confirm, or Escape to cancel.")
+        dlg.Destroy()
+
+    def test_add_edit_bus_dialog_hotkey(self):
+        bus_data = {"id": "bus-1", "name": "SFX", "mode": "layered", "volume": 1.0, "hotkey": "Ctrl+Alt+S"}
+        dlg = ui_dialogs.AddEditBusDialog(None, bus_data)
+        self.assertEqual(dlg.hotkey_txt.GetValue(), "Ctrl+Alt+S")
+        self.assertEqual(dlg.hotkey_txt.GetAccessible().GetName(0)[1], "Bus Hotkey")
+        
+        # Test GetBusData includes hotkey
+        dlg.hotkey_txt.SetValue("F9")
+        data = dlg.GetBusData()
+        self.assertEqual(data["hotkey"], "F9")
+        dlg.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_mainframe_set_sound_hotkey_flow(self, mock_msgbox):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        # Add a sound
+        rel_filename = project_manager.import_sound(self.proj_path, self.sound_source)
+        sound_data = {
+            "id": "sound-1",
+            "name": "Horn",
+            "filename": rel_filename,
+            "bus_id": frame.project_data["buses"][0]["id"],
+            "hotkey": "",
+            "default_scenario": {"volume": 1.0, "fade_in_ms": 0, "fade_out_ms": 0, "speed": 1.0, "loop": False},
+            "scenarios": []
+        }
+        frame.project_data["sounds"].append(sound_data)
+        project_manager.save_project(self.proj_path, frame.project_data)
+        frame.LoadProject(self.proj_path)
+        
+        # Select sound
+        frame.sounds_list.Select(0)
+        
+        # Mock QuickHotkeyDialog to return OK and get value "F11"
+        mock_dlg = MagicMock()
+        mock_dlg.ShowModal.return_value = wx.ID_OK
+        mock_dlg.GetValue.return_value = "F11"
+        
+        with patch('ui_dialogs.QuickHotkeyDialog', return_value=mock_dlg):
+            frame.OnSetSoundHotkey(None)
+            
+        # Verify the sound's hotkey was updated
+        self.assertEqual(frame.project_data["sounds"][0]["hotkey"], "F11")
+        frame.Destroy()
+
+    def test_shuffled_bus_playback_loop(self):
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        
+        bus_id = frame.project_data["buses"][0]["id"]
+        
+        # Add 3 sounds to the bus
+        for i in range(3):
+            sound_data = {
+                "id": f"sound-{i}",
+                "name": f"Sound {i}",
+                "filename": "mock.wav",
+                "bus_id": bus_id,
+                "hotkey": "",
+                "default_scenario": {"volume": 1.0, "fade_in_ms": 0, "fade_out_ms": 0, "speed": 1.0, "loop": False},
+                "scenarios": []
+            }
+            frame.project_data["sounds"].append(sound_data)
+            
+        # Mock PlaySound to return a mock Channel object
+        mock_channel = MagicMock()
+        mock_channel._fading_out = False
+        frame.PlaySound = MagicMock(return_value=mock_channel)
+        
+        # Toggle playlist on
+        frame.ToggleBusPlaylist(bus_id)
+        
+        self.assertTrue(frame.active_bus_playlists[bus_id]["active"])
+        self.assertEqual(frame.active_bus_playlists[bus_id]["index"], 0)
+        self.assertEqual(frame.active_bus_playlists[bus_id]["current_channel"], mock_channel)
+        
+        # Play next track manually to test advancing
+        next_mock_channel = MagicMock()
+        next_mock_channel._fading_out = False
+        frame.PlaySound = MagicMock(return_value=next_mock_channel)
+        
+        frame.PlayNextSoundInBusPlaylist(bus_id)
+        self.assertEqual(frame.active_bus_playlists[bus_id]["index"], 1)
+        self.assertEqual(frame.active_bus_playlists[bus_id]["current_channel"], next_mock_channel)
+        
+        # Verify stopping the playlist
+        frame.ToggleBusPlaylist(bus_id)
+        self.assertFalse(frame.active_bus_playlists[bus_id]["active"])
+        frame.Destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
 
