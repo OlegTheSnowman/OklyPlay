@@ -3,3 +3,4 @@ __pycache__/
 *.pyo
 *.tmp
 run.bat
+debug.log
