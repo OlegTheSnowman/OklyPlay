@@ -25,14 +25,16 @@ def create_project(path, name):
                 "name": "Music",
                 "mode": "exclusive",
                 "volume": 0.7,
-                "crossfade_ms": 500
+                "crossfade_ms": 500,
+                "hotkey_action": "loop_shuffle"
             },
             {
                 "id": sfx_bus_id,
                 "name": "SFX",
                 "mode": "layered",
                 "volume": 1.0,
-                "crossfade_ms": 0
+                "crossfade_ms": 0,
+                "hotkey_action": "single_shuffle"
             }
         ],
         "sounds": []
@@ -57,6 +59,8 @@ def load_project(path):
         if "crossfade_ms" not in bus:
             # Default to 500 ms for exclusive buses, 0 ms for layered buses, or just 500 ms overall
             bus["crossfade_ms"] = 500 if bus.get("mode") == "exclusive" else 0
+        if "hotkey_action" not in bus:
+            bus["hotkey_action"] = "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle"
     if "sounds" not in data:
         data["sounds"] = []
     if "master_volume" not in data:
