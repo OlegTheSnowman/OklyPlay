@@ -551,7 +551,7 @@ class MainFrame(wx.Frame):
             wx.MessageBox("Please create or open a project first.", "Error", wx.OK | wx.ICON_ERROR)
             return
             
-        dlg = ui_dialogs.AddEditSoundDialog(self, self.project_data["buses"])
+        dlg = ui_dialogs.AddEditSoundDialog(self, self.project_data["buses"], existing_sounds=self.project_data["sounds"])
         if dlg.ShowModal() == wx.ID_OK:
             sound_data = dlg.GetSoundData()
             filepath_full = sound_data.pop("filepath_full")
@@ -595,7 +595,7 @@ class MainFrame(wx.Frame):
         temp_sound = sound.copy()
         temp_sound["filename"] = full_filepath
         
-        dlg = ui_dialogs.AddEditSoundDialog(self, self.project_data["buses"], temp_sound)
+        dlg = ui_dialogs.AddEditSoundDialog(self, self.project_data["buses"], temp_sound, existing_sounds=self.project_data["sounds"])
         if dlg.ShowModal() == wx.ID_OK:
             updated_data = dlg.GetSoundData()
             filepath_full = updated_data.pop("filepath_full")
@@ -812,7 +812,7 @@ class MainFrame(wx.Frame):
                 break
                 
         try:
-            self.audio_engine.play(filepath, scenario, bus_id, bus_mode)
+            self.audio_engine.play(filepath, scenario, bus_id, bus_mode, sound_name=sound["name"])
             announcement = f"Playing {sound['name']}"
             if scenario_name:
                 announcement += f" — {scenario_name}"
@@ -861,15 +861,15 @@ class MainFrame(wx.Frame):
             self.UpdateStatusBar()
             Speech.speak(f"Master volume {int(new_vol * 100)} percent")
 
-    # --- Periodic UI Updates ---
     def OnCleanupTimer(self, event):
         """Runs regularly to clean up done streams and keep active stream counts updated in the status bar."""
         if self.audio_engine:
-            before_count = self.audio_engine.get_active_channels_count()
-            self.audio_engine.cleanup_done_channels()
-            after_count = self.audio_engine.get_active_channels_count()
-            if before_count != after_count:
+            done_channels = self.audio_engine.cleanup_done_channels()
+            if done_channels:
                 self.UpdateStatusBar()
+                for ch in done_channels:
+                    if ch.sound_name:
+                        Speech.speak(f"Stopped {ch.sound_name}")
 
     # --- Help & About Dialog ---
     def OnAbout(self, event):
