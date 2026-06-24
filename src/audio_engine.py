@@ -235,6 +235,8 @@ class AudioEngine:
         audio_data = loaded_sound.get_data_for_speed(speed)
         
         fade_in_ms = scenario.get('fade_in_ms', 0)
+        if bus_mode == 'exclusive' and fade_in_ms == 0:
+            fade_in_ms = crossfade_ms
         fade_out_ms = scenario.get('fade_out_ms', 0)
         
         # Exclusive bus behavior: crossfade other channels on exclusive buses (or same bus if exclusive_bus_ids not provided)
