@@ -17,7 +17,9 @@ class AccessibleName(wx.Accessible):
         self.name = name
 
     def GetName(self, childId):
-        return wx.ACC_OK, self.name
+        if childId == wx.ACC_SELF:
+            return wx.ACC_OK, self.name
+        return wx.ACC_NOT_SUPPORTED, ""
 
 def label_control(control, name):
     control.SetName(name)
