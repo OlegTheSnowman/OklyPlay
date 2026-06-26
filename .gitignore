@@ -10,9 +10,17 @@ build/
 dist/
 *.spec
 
-# Agent config
+# AI tooling — local only, never committed
 .agents/
 AGENTS.md
+src/AGENTS.md
+CLAUDE.md
+GEMINI.md
+QODER.md
+.claude/
+.gemini/
+.mcp.json
+.github/code-review-graph.instruction.md
 
 # Added by code-review-graph
 .code-review-graph/
