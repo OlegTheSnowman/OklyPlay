@@ -516,11 +516,12 @@ class SoundManagerDialog(wx.Dialog):
                 "bus_id":   "",           # intentionally unassigned
                 "hotkey":   "",
                 "default_scenario": {
-                    "volume":      1.0,
-                    "fade_in_ms":  0,
-                    "fade_out_ms": 0,
-                    "speed":       1.0,
-                    "loop":        False,
+                    "volume":          1.0,
+                    "fade_in_ms":      0,
+                    "fade_out_ms":     0,
+                    "speed":           1.0,
+                    "pitch_semitones": 0.0,
+                    "loop":            False,
                 },
                 "scenarios": [],
                 "missing":   False,
@@ -602,11 +603,12 @@ class SoundManagerDialog(wx.Dialog):
                 "bus_id":   "",
                 "hotkey":   "",
                 "default_scenario": {
-                    "volume":      1.0,
-                    "fade_in_ms":  0,
-                    "fade_out_ms": 0,
-                    "speed":       1.0,
-                    "loop":        False,
+                    "volume":          1.0,
+                    "fade_in_ms":      0,
+                    "fade_out_ms":     0,
+                    "speed":           1.0,
+                    "pitch_semitones": 0.0,
+                    "loop":            False,
                 },
                 "scenarios": [],
                 "missing":   False,
@@ -685,7 +687,7 @@ class AddEditSoundDialog(wx.Dialog):
     """Dialog to add or edit sound properties (name, file, bus, hotkey, volume, fade, speed, loop)."""
     def __init__(self, parent, buses, sound_data=None, existing_sounds=None):
         title = "Edit Sound" if sound_data else "Add Sound"
-        super().__init__(parent, title=title, size=(500, 480))
+        super().__init__(parent, title=title, size=(500, 530))
         
         self.buses = buses  # List of dicts (id, name)
         self.sound_data = sound_data
@@ -749,38 +751,45 @@ class AddEditSoundDialog(wx.Dialog):
         # Speed double spin
         grid.Add(wx.StaticText(panel, label="Playback Speed:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.speed_spin = wx.SpinCtrlDouble(panel, min=0.1, max=3.0, initial=1.0, inc=0.1)
-        label_control(self.speed_spin, "Playback Speed Multiplier")
+        label_control(self.speed_spin, "Playback Speed Multiplier (also shifts pitch, like tape speed)")
         grid.Add(self.speed_spin, 1, wx.EXPAND)
-        
+
+        # Pitch spin (independent from speed)
+        grid.Add(wx.StaticText(panel, label="Pitch (semitones):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.pitch_spin = wx.SpinCtrlDouble(panel, min=-12.0, max=12.0, initial=0.0, inc=0.5)
+        label_control(self.pitch_spin, "Pitch Shift in Semitones. Negative values lower pitch, positive raise it. Zero means no change.")
+        grid.Add(self.pitch_spin, 1, wx.EXPAND)
+
         # Loop checkbox
         grid.Add(wx.StaticText(panel, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
         self.loop_chk = wx.CheckBox(panel, label="Loop Audio")
         label_control(self.loop_chk, "Loop Audio")
         grid.Add(self.loop_chk, 1, wx.EXPAND)
-        
+
         # Populate if editing
         if sound_data:
             self.name_txt.SetValue(sound_data.get("name", ""))
-            
+
             # Show filename or path
             filename = sound_data.get("filename", "")
             self.file_txt.SetValue(filename)
-            
+
             # Select bus
             sound_bus_id = sound_data.get("bus_id")
             for i, b in enumerate(buses):
                 if b["id"] == sound_bus_id:
                     self.bus_choice.SetSelection(i)
                     break
-                    
+
             self.hotkey_txt.SetValue(sound_data.get("hotkey", ""))
-            
+
             # Default scenario values
             default_scen = sound_data.get("default_scenario", {})
             self.vol_slider.SetValue(int(default_scen.get("volume", 1.0) * 100))
             self.fade_in_spin.SetValue(default_scen.get("fade_in_ms", 0))
             self.fade_out_spin.SetValue(default_scen.get("fade_out_ms", 0))
             self.speed_spin.SetValue(default_scen.get("speed", 1.0))
+            self.pitch_spin.SetValue(default_scen.get("pitch_semitones", 0.0))
             self.loop_chk.SetValue(default_scen.get("loop", False))
             
         panel_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -864,6 +873,7 @@ class AddEditSoundDialog(wx.Dialog):
                 "fade_in_ms": self.fade_in_spin.GetValue(),
                 "fade_out_ms": self.fade_out_spin.GetValue(),
                 "speed": self.speed_spin.GetValue(),
+                "pitch_semitones": self.pitch_spin.GetValue(),
                 "loop": self.loop_chk.GetValue()
             },
             "scenarios": scenarios
@@ -1233,7 +1243,7 @@ class AddEditScenarioDialog(wx.Dialog):
     """Dialog to configure or edit a specific sound scenario preset."""
     def __init__(self, parent, buses, scenario_data=None):
         title = "Edit Scenario" if scenario_data else "Add Scenario"
-        super().__init__(parent, title=title, size=(450, 420))
+        super().__init__(parent, title=title, size=(450, 470))
         
         self.buses = buses
         panel = wx.Panel(self)
@@ -1267,15 +1277,21 @@ class AddEditScenarioDialog(wx.Dialog):
         # Speed
         grid.Add(wx.StaticText(panel, label="Speed Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.speed_spin = wx.SpinCtrlDouble(panel, min=0.1, max=3.0, initial=1.0, inc=0.1)
-        label_control(self.speed_spin, "Speed Override")
+        label_control(self.speed_spin, "Speed Override (also shifts pitch, like tape speed)")
         grid.Add(self.speed_spin, 1, wx.EXPAND)
-        
+
+        # Pitch
+        grid.Add(wx.StaticText(panel, label="Pitch Override (semitones):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.pitch_spin = wx.SpinCtrlDouble(panel, min=-12.0, max=12.0, initial=0.0, inc=0.5)
+        label_control(self.pitch_spin, "Pitch Shift in Semitones. Negative lowers pitch, positive raises it. Zero means no change.")
+        grid.Add(self.pitch_spin, 1, wx.EXPAND)
+
         # Loop
         grid.Add(wx.StaticText(panel, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
         self.loop_chk = wx.CheckBox(panel, label="Loop Override")
         label_control(self.loop_chk, "Loop Override")
         grid.Add(self.loop_chk, 1, wx.EXPAND)
-        
+
         # Bus Override
         grid.Add(wx.StaticText(panel, label="Bus Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
         bus_choices = ["None (Use Default Bus)"] + [b["name"] for b in buses]
@@ -1283,13 +1299,14 @@ class AddEditScenarioDialog(wx.Dialog):
         label_control(self.bus_choice, "Bus Override")
         grid.Add(self.bus_choice, 1, wx.EXPAND)
         self.bus_choice.SetSelection(0)
-        
+
         if scenario_data:
             self.name_txt.SetValue(scenario_data.get("name", ""))
             self.vol_slider.SetValue(int(scenario_data.get("volume", 1.0) * 100))
             self.fade_in_spin.SetValue(scenario_data.get("fade_in_ms", 0))
             self.fade_out_spin.SetValue(scenario_data.get("fade_out_ms", 0))
             self.speed_spin.SetValue(scenario_data.get("speed", 1.0))
+            self.pitch_spin.SetValue(scenario_data.get("pitch_semitones", 0.0))
             self.loop_chk.SetValue(scenario_data.get("loop", False))
             
             # Set bus override
@@ -1333,6 +1350,7 @@ class AddEditScenarioDialog(wx.Dialog):
             "fade_in_ms": self.fade_in_spin.GetValue(),
             "fade_out_ms": self.fade_out_spin.GetValue(),
             "speed": self.speed_spin.GetValue(),
+            "pitch_semitones": self.pitch_spin.GetValue(),
             "loop": self.loop_chk.GetValue(),
             "bus_id": bus_id
         }
@@ -1354,13 +1372,14 @@ class EditScenariosDialog(wx.Dialog):
         list_lbl = wx.StaticText(panel, label="Scenarios:")
         self.scen_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.scen_list, "Scenarios List")
-        self.scen_list.InsertColumn(0, "Name", width=150)
-        self.scen_list.InsertColumn(1, "Vol", width=50)
-        self.scen_list.InsertColumn(2, "Fade In", width=70)
-        self.scen_list.InsertColumn(3, "Fade Out", width=70)
-        self.scen_list.InsertColumn(4, "Speed", width=60)
-        self.scen_list.InsertColumn(5, "Loop", width=50)
-        self.scen_list.InsertColumn(6, "Bus Override", width=120)
+        self.scen_list.InsertColumn(0, "Name", width=140)
+        self.scen_list.InsertColumn(1, "Vol", width=45)
+        self.scen_list.InsertColumn(2, "Fade In", width=65)
+        self.scen_list.InsertColumn(3, "Fade Out", width=65)
+        self.scen_list.InsertColumn(4, "Speed", width=55)
+        self.scen_list.InsertColumn(5, "Pitch", width=55)
+        self.scen_list.InsertColumn(6, "Loop", width=45)
+        self.scen_list.InsertColumn(7, "Bus Override", width=110)
         
         list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
         list_sizer.Add(self.scen_list, 1, wx.EXPAND)
@@ -1409,8 +1428,11 @@ class EditScenariosDialog(wx.Dialog):
             self.scen_list.SetItem(idx, 2, f"{scen['fade_in_ms']}ms")
             self.scen_list.SetItem(idx, 3, f"{scen['fade_out_ms']}ms")
             self.scen_list.SetItem(idx, 4, f"{scen['speed']}x")
-            self.scen_list.SetItem(idx, 5, "Yes" if scen["loop"] else "No")
-            
+            pitch = scen.get("pitch_semitones", 0.0)
+            pitch_str = f"+{pitch:g}" if pitch > 0 else f"{pitch:g}"
+            self.scen_list.SetItem(idx, 5, f"{pitch_str} st")
+            self.scen_list.SetItem(idx, 6, "Yes" if scen["loop"] else "No")
+
             # Bus override text
             bus_id = scen.get("bus_id")
             bus_name = "Default"
@@ -1419,7 +1441,7 @@ class EditScenariosDialog(wx.Dialog):
                     if b["id"] == bus_id:
                         bus_name = b["name"]
                         break
-            self.scen_list.SetItem(idx, 6, bus_name)
+            self.scen_list.SetItem(idx, 7, bus_name)
             self.scen_list.SetItemData(idx, idx)
 
     def OnAddScenario(self, event):

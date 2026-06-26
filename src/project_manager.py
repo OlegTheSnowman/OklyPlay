@@ -84,6 +84,14 @@ def load_project(path):
     if not os.path.exists(sounds_dir):
         os.makedirs(sounds_dir, exist_ok=True)
         
+    for sound in data["sounds"]:
+        ds = sound.setdefault("default_scenario", {})
+        if "pitch_semitones" not in ds:
+            ds["pitch_semitones"] = 0.0
+        for scen in sound.get("scenarios", []):
+            if "pitch_semitones" not in scen:
+                scen["pitch_semitones"] = 0.0
+
     missing_count = 0
     for sound in data["sounds"]:
         filename = sound.get("filename", "")

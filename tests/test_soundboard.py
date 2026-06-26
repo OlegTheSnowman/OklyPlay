@@ -53,14 +53,18 @@ class TestAudioEngine(unittest.TestCase):
 
     def test_loaded_sound_speed_adjustment(self):
         sound = LoadedSound(self.wav_path, self.sample_rate)
-        
-        # Speed 2.0 (should halve the sample count)
-        data_2x = sound.get_data_for_speed(2.0)
+
+        # Speed 2.0 with no pitch shift (should halve the sample count)
+        data_2x = sound.get_data_for_pitch_and_speed(0.0, 2.0)
         self.assertEqual(data_2x.shape, (self.sample_rate // 2, 2))
-        
-        # Speed 0.5 (should double the sample count)
-        data_05x = sound.get_data_for_speed(0.5)
+
+        # Speed 0.5 with no pitch shift (should double the sample count)
+        data_05x = sound.get_data_for_pitch_and_speed(0.0, 0.5)
         self.assertEqual(data_05x.shape, (self.sample_rate * 2, 2))
+
+        # Pitch shift only — duration should be unchanged
+        data_pitched = sound.get_data_for_pitch_and_speed(3.0, 1.0)
+        self.assertEqual(data_pitched.shape, (self.sample_rate, 2))
 
     def test_channel_fades(self):
         sound = LoadedSound(self.wav_path, self.sample_rate)

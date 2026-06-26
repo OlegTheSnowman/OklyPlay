@@ -2,6 +2,31 @@ import numpy as np
 import soundfile as sf
 import sounddevice as sd
 
+
+def _pitch_shift(data: np.ndarray, semitones: float) -> np.ndarray:
+    """Shift pitch by semitones without changing duration using a double-resample technique."""
+    if semitones == 0.0:
+        return data
+    N = len(data)
+    if N == 0:
+        return data
+    pitch_factor = 2.0 ** (semitones / 12.0)
+    N_shifted = max(1, int(round(N / pitch_factor)))
+    t_in = np.arange(N, dtype=np.float64)
+    t_out = np.linspace(0.0, N - 1, N_shifted, dtype=np.float64)
+    shifted = np.column_stack((
+        np.atleast_1d(np.interp(t_out, t_in, data[:, 0])),
+        np.atleast_1d(np.interp(t_out, t_in, data[:, 1])),
+    ))
+    # Resample back to original length to restore duration
+    t_in2 = np.arange(N_shifted, dtype=np.float64)
+    t_out2 = np.linspace(0.0, N_shifted - 1, N, dtype=np.float64)
+    return np.column_stack((
+        np.atleast_1d(np.interp(t_out2, t_in2, shifted[:, 0])),
+        np.atleast_1d(np.interp(t_out2, t_in2, shifted[:, 1])),
+    )).astype(np.float32)
+
+
 class LoadedSound:
     """Represents a preloaded audio file in memory resampled to output samplerate."""
     def __init__(self, filepath, target_samplerate):
@@ -33,27 +58,39 @@ class LoadedSound:
             
         self.data = data.astype(np.float32)
         self.samplerate = samplerate
-        self._speed_cache = {1.0: self.data}
+        self._audio_cache: dict = {(0.0, 1.0): self.data}
 
-    def get_data_for_speed(self, speed):
-        """Returns resampled audio data for a given playback speed multiplier."""
+    def get_data_for_pitch_and_speed(self, pitch_semitones: float, speed: float) -> np.ndarray:
+        """Returns audio data with pitch shift and speed applied.
+
+        Pitch is shifted first (duration-preserving double-resample), then speed
+        resampling is applied on top (changes duration, like tape speed).
+        """
+        pitch_key = round(float(pitch_semitones) * 2) / 2  # snap to nearest 0.5 semitone
         speed_key = round(float(speed), 2)
         if speed_key <= 0.01:
-            speed_key = 1.0  # Safe fallback
-            
-        if speed_key not in self._speed_cache:
-            N = len(self.data)
-            N_new = int(N / speed_key)
-            if N_new <= 0:
-                self._speed_cache[speed_key] = np.zeros((0, 2), dtype=np.float32)
+            speed_key = 1.0
+
+        cache_key = (pitch_key, speed_key)
+        if cache_key not in self._audio_cache:
+            pitched = _pitch_shift(self.data, pitch_key)
+            if speed_key == 1.0:
+                result = pitched
             else:
-                t_in = np.arange(N)
-                t_out = np.linspace(0, N - 1, N_new)
-                left = np.interp(t_out, t_in, self.data[:, 0])
-                right = np.interp(t_out, t_in, self.data[:, 1])
-                self._speed_cache[speed_key] = np.column_stack((left, right)).astype(np.float32)
-                
-        return self._speed_cache[speed_key]
+                N = len(pitched)
+                N_new = int(N / speed_key)
+                if N_new <= 0:
+                    result = np.zeros((0, 2), dtype=np.float32)
+                else:
+                    t_in = np.arange(N)
+                    t_out = np.linspace(0, N - 1, N_new)
+                    result = np.column_stack((
+                        np.interp(t_out, t_in, pitched[:, 0]),
+                        np.interp(t_out, t_in, pitched[:, 1]),
+                    )).astype(np.float32)
+            self._audio_cache[cache_key] = result
+
+        return self._audio_cache[cache_key]
 
 
 class Channel:
@@ -277,8 +314,9 @@ class AudioEngine:
             self._loaded_sounds[filepath] = LoadedSound(filepath, self.sample_rate)
             
         loaded_sound = self._loaded_sounds[filepath]
+        pitch_semitones = scenario.get('pitch_semitones', 0.0)
         speed = scenario.get('speed', 1.0)
-        audio_data = loaded_sound.get_data_for_speed(speed)
+        audio_data = loaded_sound.get_data_for_pitch_and_speed(pitch_semitones, speed)
         
         fade_in_ms = scenario.get('fade_in_ms', 0)
         if bus_mode == 'exclusive' and fade_in_ms == 0:

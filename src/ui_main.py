@@ -60,6 +60,10 @@ class MainFrame(wx.Frame):
         self.cleanup_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.OnCleanupTimer, self.cleanup_timer)
         self.cleanup_timer.Start(100)  # every 100ms
+
+        # Timer for debounced search result announcement
+        self._search_announce_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._OnSearchAnnounceTimer, self._search_announce_timer)
         
         # Load last project
         self.LoadSettingsAndLastProject()
@@ -84,14 +88,25 @@ class MainFrame(wx.Frame):
         # Right Panel (Sounds)
         self.right_panel = wx.Panel(self.splitter)
         right_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Search bar
+        search_row = wx.BoxSizer(wx.HORIZONTAL)
+        search_lbl = wx.StaticText(self.right_panel, label="Search:")
+        self.search_ctrl = wx.TextCtrl(self.right_panel)
+        ui_dialogs.label_control(self.search_ctrl, "Search sounds. Type to filter the list below.")
+        self.search_ctrl.Bind(wx.EVT_TEXT, self.OnSearchChanged)
+        search_row.Add(search_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        search_row.Add(self.search_ctrl, 1, wx.EXPAND)
+        right_sizer.Add(search_row, 0, wx.EXPAND | wx.ALL, 5)
+
         right_lbl = wx.StaticText(self.right_panel, label="Sounds:")
         self.sounds_list = wx.ListCtrl(self.right_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         ui_dialogs.label_control(self.sounds_list, "Sounds")
         self.sounds_list.InsertColumn(0, "Name", width=250)
         self.sounds_list.InsertColumn(1, "Hotkey", width=100)
         self.sounds_list.InsertColumn(2, "Scenarios", width=120)
-        
-        right_sizer.Add(right_lbl, 0, wx.ALL, 5)
+
+        right_sizer.Add(right_lbl, 0, wx.LEFT | wx.RIGHT, 5)
         right_sizer.Add(self.sounds_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         self.right_panel.SetSizer(right_sizer)
         
@@ -365,22 +380,42 @@ class MainFrame(wx.Frame):
         if not self.project_data or not self.selected_bus_id:
             self.current_bus_sounds = []
             return
-            
-        # Get sounds for current bus
-        self.current_bus_sounds = [
+
+        all_bus_sounds = [
             s for s in self.project_data.get("sounds", [])
             if s.get("bus_id") == self.selected_bus_id
         ]
-        
+
+        search_text = self.search_ctrl.GetValue().strip().lower()
+        if search_text:
+            self.current_bus_sounds = [
+                s for s in all_bus_sounds
+                if search_text in s["name"].lower()
+            ]
+        else:
+            self.current_bus_sounds = all_bus_sounds
+
         for idx, sound in enumerate(self.current_bus_sounds):
             self.sounds_list.InsertItem(idx, sound["name"])
             self.sounds_list.SetItem(idx, 1, sound.get("hotkey", ""))
-            
             scen_count = len(sound.get("scenarios", []))
             self.sounds_list.SetItem(idx, 2, f"{scen_count} scenarios")
-            
-            # Associate item with index in current_bus_sounds
             self.sounds_list.SetItemData(idx, idx)
+
+    def OnSearchChanged(self, event):
+        """Filter sounds list as the user types in the search bar."""
+        self.RefreshSoundsList()
+        # Debounce the speech announcement so we don't interrupt every keystroke
+        self._search_announce_timer.StartOnce(400)
+        event.Skip()
+
+    def _OnSearchAnnounceTimer(self, event):
+        """Announce search result count after typing has paused."""
+        text = self.search_ctrl.GetValue().strip()
+        if text:
+            count = len(self.current_bus_sounds)
+            noun = "sound" if count == 1 else "sounds"
+            Speech.speak(f"{count} {noun} found")
 
     def RebuildAccelerators(self):
         """Rebuilds the accelerator table, combining standard menu bindings and sound-level hotkeys."""
@@ -873,6 +908,7 @@ class MainFrame(wx.Frame):
         if sel != wx.NOT_FOUND:
             bus = self.project_data["buses"][sel]
             self.selected_bus_id = bus["id"]
+            self.search_ctrl.ChangeValue("")
             self.RefreshSoundsList()
             self.UpdateStatusBar()
 
@@ -882,6 +918,7 @@ class MainFrame(wx.Frame):
         if self.project_data and 0 <= bus_index < len(self.project_data["buses"]):
             bus = self.project_data["buses"][bus_index]
             self.selected_bus_id = bus["id"]
+            self.search_ctrl.ChangeValue("")
             self.RefreshBusesList()
             self.RefreshSoundsList()
             self.UpdateStatusBar()
