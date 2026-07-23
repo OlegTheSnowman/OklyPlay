@@ -1,89 +1,112 @@
-# OklyPlay Soundboard
+# OklyPlay
 
-OklyPlay is a screenreader-accessible soundboard designed for streamers and keyboard-only users. It allows you to load, organize, and play sound clips with custom hotkeys, audio buses, and playback scenarios.
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Build](https://github.com/OlegTheSnowman/OklyPlay/actions/workflows/release.yml/badge.svg)
 
-Built with **wxPython**, **sounddevice**, **soundfile**, **numpy**, and **accessible_output2** for native screenreader speech support.
+A soundboard for streamers, built to be fully usable with just a keyboard and a screen reader.
 
----
+Most soundboards on the market are unusable for blind streamers — custom-drawn buttons and grids with no labels, no keyboard navigation, nothing a screen reader can make sense of. I couldn't find one that worked, so I built one. It's designed around NVDA, JAWS, and Windows Narrator from the ground up, not as an afterthought bolted on later.
 
-## Features
-
-- **Fully Accessible**: All interface controls are custom-labeled for screenreaders (NVDA, JAWS, Narrator). Spoken announcements are triggered on navigation and major actions.
-- **Multi-Bus Mixer**: Group sounds into separate audio buses.
-  - *Layered Mode*: Play multiple sounds at the same time.
-  - *Exclusive Mode*: Playing a sound automatically stops any other sound playing on that same bus.
-- **Sound Manager (`Alt+S`)**: A dedicated view for managing all project sounds at once.
-  - Import multiple audio files in bulk — sounds start unassigned, so you can organise them at your own pace.
-  - Press `Ctrl+1`–`Ctrl+9` to instantly move the selected sound to the matching bus.
-  - `Ctrl+U` clears a bus assignment; `F2` edits; `Delete` removes.
-- **Custom Hotkeys**: Trigger sounds instantly at any time using system-wide hotkeys. Supports key combinations like `Ctrl`, `Shift`, `Alt`, and functional keys (e.g., `F1`–`F12`, `Space`, `Enter`).
-  - **Quick Hotkey (`Alt+K`)**: Assign or change a sound's hotkey on the fly without opening the full editor.
-- **Bus Loop Playback**: Assign a hotkey to an entire bus to shuffle and loop all its sounds continuously — perfect for background music or ambient playlists.
-- **Scenarios**: Create different playback configurations (overrides) for the same sound. Control:
-  - Individual sound volume overrides
-  - Linear fade-in and fade-out duration (in milliseconds)
-  - Playback speed (resampling multiplier from `0.5x` to `2.0x`)
-  - Audio looping
-  - Alternative bus routing
-- **Output Device Control**: Choose your audio interface and adjust master or individual bus volumes.
-- **Portable Projects**: Save, load, and package your projects (along with your audio files) into zip archives to share them.
+Built with **wxPython**, **sounddevice**, **soundfile**, **numpy**, and **accessible_output2**.
 
 ---
 
-## Keyboard Shortcuts
+## What it does
 
-OklyPlay is designed for rapid keyboard control. Here is a quick reference:
+- **Fully accessible** — every control is labeled, every action announces itself. No mystery icons, no unlabeled buttons.
+- **Multi-bus mixer** — group your sounds into buses. Layered buses stack sounds on top of each other (good for SFX); exclusive buses cut off whatever else is playing (good for music).
+- **Sound Manager (`Alt+S`)** — bulk-import a folder of clips, then sort them onto buses at your own pace with `Ctrl+1`–`Ctrl+9`.
+- **Hotkeys everywhere** — bind any sound or any whole bus to a system-wide hotkey, with conflict detection so you don't clobber an existing bind by accident.
+- **Bus loop playback** — point a hotkey at a bus and it'll shuffle or sequence through everything on it, looping until you stop it. Handy for background music you don't want to babysit.
+- **Scenarios** — save multiple presets per sound (volume, fade in/out, speed, loop, alternate bus) and switch between them instead of re-editing the same clip every time.
+- **Crossfading** — exclusive buses crossfade into each other, and looping playlists crossfade track-to-track, so nothing cuts in or out abruptly.
+- **Portable projects** — a project is just a folder (config + audio files). Zip it up and hand it to someone else, or move it between machines.
+
+For the full rundown of every feature, see [features.md](features.md).
+
+---
+
+## Keyboard shortcuts
 
 | Action | Shortcut |
 |--------|----------|
-| **Play Selected Sound** | `Space` |
-| **Stop Selected Sound** | `Delete` |
-| **Stop Current Bus** | `Escape` |
-| **Stop All Sounds** | `Alt + Escape` |
-| **Switch Active Bus** | `Ctrl + 1` through `Ctrl + 9` |
-| **Adjust Bus Volume** | `Ctrl + Up Arrow` / `Ctrl + Down Arrow` |
-| **Adjust Master Volume** | `Ctrl + Shift + Up Arrow` / `Ctrl + Shift + Down Arrow` |
-| **Sound Manager** | `Alt + S` |
-| **Import Sounds (in Manager)** | `Ctrl + I` |
-| **Assign to Bus N (in Manager)** | `Ctrl + 1` through `Ctrl + 9` |
-| **Unassign Bus (in Manager)** | `Ctrl + U` |
-| **Quick Hotkey** | `Alt + K` |
-| **Edit Sound** | `F2` |
-| **Project Manager** | `Ctrl + M` |
-| **Manage Buses** | `Ctrl + B` |
-| **Preferences / Device Setup** | `Ctrl + Alt + P` |
-| **Help & Shortcuts Dialog** | `Ctrl + H` |
+| Play selected sound | `Space` |
+| Stop selected sound | `Delete` |
+| Stop current bus | `Escape` |
+| Stop all sounds | `Alt + Escape` |
+| Switch active bus | `Ctrl + 1` – `Ctrl + 9` |
+| Adjust bus volume | `Ctrl + Up` / `Ctrl + Down` |
+| Adjust master volume | `Ctrl + Shift + Up` / `Ctrl + Shift + Down` |
+| Sound Manager | `Alt + S` |
+| Import sounds (in Manager) | `Ctrl + I` |
+| Assign to bus N (in Manager) | `Ctrl + 1` – `Ctrl + 9` |
+| Unassign bus (in Manager) | `Ctrl + U` |
+| Quick hotkey assign | `Alt + K` |
+| Edit sound | `F2` |
+| Project Manager | `Ctrl + M` |
+| Manage buses | `Ctrl + B` |
+| Preferences / device setup | `Ctrl + Alt + P` |
+| Help & shortcuts dialog | `Ctrl + H` |
 
 ---
 
-## Getting Started
+## Getting started
 
-### Using the Portable Version (Windows)
-1. Go to the [Releases](https://github.com/OlegTheSnowman/OklyPlay/releases) page.
-2. Download `OklyPlay.exe` from the latest release.
-3. Run the executable. No installation is required.
+### Portable build (Windows, no install)
 
-### Running from Source
-To run OklyPlay from source, you will need Python installed (Python 3.11 recommended).
+1. Grab the latest `OklyPlay.exe` from [Releases](https://github.com/OlegTheSnowman/OklyPlay/releases).
+2. Run it. That's it — no installer, no setup wizard.
 
-1. Clone this repository.
-2. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the application:
-   ```bash
-   python src/soundboard.py
-   ```
+### Running from source
+
+Needs Python 3.11+.
+
+```bash
+git clone https://github.com/OlegTheSnowman/OklyPlay.git
+cd OklyPlay
+pip install -r requirements.txt
+python src/soundboard.py
+```
+
+### Building the executable yourself
+
+```bash
+pip install pyinstaller
+build_portable.bat
+```
+
+The result lands in `dist/OklyPlay.exe`. Every tagged release (`v*`) also builds and publishes automatically via GitHub Actions.
 
 ---
 
-## Building the Executable
+## How it's put together
 
-If you want to compile the standalone executable locally:
-1. Ensure PyInstaller is installed:
-   ```bash
-   pip install pyinstaller
-   ```
-2. Double-click or run `build_portable.bat` in the root folder.
-3. The built executable will be located under `dist/OklyPlay.exe`.
+```
+src/soundboard.py          entry point — creates the wx.App and main window
+src/ui_main.py              main window: bus list, sound list, menu, status bar
+src/ui_dialogs.py           every modal dialog (projects, prefs, sound/bus editing)
+src/audio_engine.py         the mixer itself — buses, channels, fades, device output
+src/project_manager.py      load/save/import/export of project files
+src/accessible_speech.py    thin wrapper for screen reader announcements
+```
+
+A project is just a folder: `project.json` for all the config, plus a `sounds/` directory holding the actual audio files. That's the whole portability story — zip the folder, send it, done.
+
+---
+
+## Running the tests
+
+```bash
+pip install pytest
+python -m pytest
+```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+If you hit a bug, open an issue. If you're blind or low-vision and something in here doesn't work well with your screen reader, that's a bug too — please tell me.
