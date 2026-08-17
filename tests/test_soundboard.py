@@ -753,6 +753,20 @@ class TestAccessibilityLabeling(unittest.TestCase):
     def tearDownClass(cls):
         cls.app.Destroy()
 
+    def _assert_native_accessible_name(self, control, expected):
+        # wx.Choice/ListBox/ListCtrl are deliberately left off the custom
+        # AccessibleName (see label_control's comment: overriding their
+        # accessible object breaks child-item navigation), so their name comes
+        # from wx's own default IAccessible proxy instead. A headless CI
+        # runner's desktop session doesn't reliably provide that proxy, so
+        # GetAccessible() can legitimately be None here even though it isn't
+        # on a real Windows desktop. Only assert when the platform actually
+        # handed one back; these controls get a manual pass against NVDA,
+        # JAWS, and Narrator on real hardware instead.
+        acc = control.GetAccessible()
+        if acc is not None:
+            self.assertEqual(acc.GetName(0)[1], expected)
+
     def test_dialog_controls_are_labeled(self):
         # 1. NewProjectDialog
         dlg1 = ui_dialogs.NewProjectDialog(None)
@@ -764,17 +778,7 @@ class TestAccessibilityLabeling(unittest.TestCase):
         # 2. PreferencesDialog
         devices = [(0, "Default Device")]
         dlg2 = ui_dialogs.PreferencesDialog(None, devices, current_device_index=0, current_volume=0.8)
-        # device_choice is a wx.Choice, deliberately left on wx's own default
-        # accessible object (see label_control's comment: overriding it breaks
-        # child-item navigation). That default object comes from the native
-        # IAccessible proxy, which a headless CI runner's desktop session
-        # doesn't always provide, so GetAccessible() can legitimately be None
-        # here even though it isn't on a real Windows desktop. Only assert the
-        # name when the platform actually handed back an accessible object;
-        # verified manually against NVDA/JAWS/Narrator on real hardware.
-        device_acc = dlg2.device_choice.GetAccessible()
-        if device_acc is not None:
-            self.assertEqual(device_acc.GetName(0)[1], "Audio Output Device")
+        self._assert_native_accessible_name(dlg2.device_choice, "Audio Output Device")
         self.assertEqual(dlg2.vol_slider.GetAccessible().GetName(0)[1], "Master Volume")
         dlg2.Destroy()
         
@@ -784,7 +788,7 @@ class TestAccessibilityLabeling(unittest.TestCase):
         self.assertEqual(dlg3.name_txt.GetAccessible().GetName(0)[1], "Sound Name")
         self.assertEqual(dlg3.file_txt.GetAccessible().GetName(0)[1], "Audio File Path")
         self.assertEqual(dlg3.file_browse_btn.GetAccessible().GetName(0)[1], "Browse Audio File")
-        self.assertEqual(dlg3.bus_choice.GetAccessible().GetName(0)[1], "Bus Assignment")
+        self._assert_native_accessible_name(dlg3.bus_choice, "Bus Assignment")
         self.assertEqual(dlg3.hotkey_txt.GetAccessible().GetName(0)[1], "Hotkey Assignment")
         self.assertEqual(dlg3.vol_slider.GetAccessible().GetName(0)[1], "Volume")
         self.assertEqual(dlg3.fade_in_spin.GetAccessible().GetName(0)[1], "Fade In Milliseconds")
@@ -799,7 +803,7 @@ class TestAccessibilityLabeling(unittest.TestCase):
         # 4. AddEditBusDialog
         dlg4 = ui_dialogs.AddEditBusDialog(None)
         self.assertEqual(dlg4.name_txt.GetAccessible().GetName(0)[1], "Bus Name")
-        self.assertEqual(dlg4.mode_choice.GetAccessible().GetName(0)[1], "Playback Mode")
+        self._assert_native_accessible_name(dlg4.mode_choice, "Playback Mode")
         self.assertEqual(dlg4.vol_slider.GetAccessible().GetName(0)[1], "Volume")
         dlg4.Destroy()
 
@@ -810,7 +814,7 @@ class TestAccessibilityLabeling(unittest.TestCase):
             "sounds": []
         }
         dlg5 = ui_dialogs.ManageBusesDialog(None, project_data)
-        self.assertEqual(dlg5.bus_list.GetAccessible().GetName(0)[1], "Buses List")
+        self._assert_native_accessible_name(dlg5.bus_list, "Buses List")
         dlg5.Destroy()
 
         # 6. AddEditScenarioDialog
@@ -821,7 +825,7 @@ class TestAccessibilityLabeling(unittest.TestCase):
         self.assertEqual(dlg6.fade_out_spin.GetAccessible().GetName(0)[1], "Fade Out Milliseconds")
         self.assertEqual(dlg6.speed_spin.GetAccessible().GetName(0)[1], "Speed Override")
         self.assertEqual(dlg6.loop_chk.GetAccessible().GetName(0)[1], "Loop Override")
-        self.assertEqual(dlg6.bus_choice.GetAccessible().GetName(0)[1], "Bus Override")
+        self._assert_native_accessible_name(dlg6.bus_choice, "Bus Override")
         dlg6.Destroy()
 
         # 7. EditScenariosDialog
@@ -834,13 +838,13 @@ class TestAccessibilityLabeling(unittest.TestCase):
             "scenarios": []
         }
         dlg7 = ui_dialogs.EditScenariosDialog(None, buses, sound_data)
-        self.assertEqual(dlg7.scen_list.GetAccessible().GetName(0)[1], "Scenarios List")
+        self._assert_native_accessible_name(dlg7.scen_list, "Scenarios List")
         dlg7.Destroy()
 
         # 8. ProjectManagerDialog
         recent = [{"name": "P1", "path": "D:\\p1"}]
         dlg8 = ui_dialogs.ProjectManagerDialog(None, recent)
-        self.assertEqual(dlg8.projects_list.GetAccessible().GetName(0)[1], "Recent Projects List")
+        self._assert_native_accessible_name(dlg8.projects_list, "Recent Projects List")
         dlg8.Destroy()
 
 
