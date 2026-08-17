@@ -1,6 +1,10 @@
+import logging
+
 import numpy as np
 import soundfile as sf
 import sounddevice as sd
+
+logger = logging.getLogger(__name__)
 
 
 def _pitch_shift(data: np.ndarray, semitones: float) -> np.ndarray:
@@ -241,9 +245,9 @@ class AudioEngine:
             )
             self._stream.start()
         except Exception as e:
-            print(f"Failed to open audio stream on device {self._device_index}: {e}")
+            logger.error("Failed to open audio stream on device %s: %s", self._device_index, e)
             if self._device_index is not None:
-                print("Attempting fallback to default output device...")
+                logger.warning("Attempting fallback to default output device...")
                 self._device_index = None
                 self._open_stream()
             else:
@@ -404,7 +408,7 @@ class AudioEngine:
             devices = sd.query_devices()
             return [(i, d['name']) for i, d in enumerate(devices) if d.get('max_output_channels', 0) > 0]
         except Exception as e:
-            print(f"Error querying audio devices: {e}")
+            logger.error("Error querying audio devices: %s", e)
             return []
 
     def set_output_device(self, device_index):
