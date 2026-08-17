@@ -823,7 +823,7 @@ class TestAccessibilityLabeling(unittest.TestCase):
         self.assertEqual(dlg6.vol_slider.GetAccessible().GetName(0)[1], "Volume Override")
         self.assertEqual(dlg6.fade_in_spin.GetAccessible().GetName(0)[1], "Fade In Milliseconds")
         self.assertEqual(dlg6.fade_out_spin.GetAccessible().GetName(0)[1], "Fade Out Milliseconds")
-        self.assertEqual(dlg6.speed_spin.GetAccessible().GetName(0)[1], "Speed Override")
+        self.assertEqual(dlg6.speed_spin.GetAccessible().GetName(0)[1], "Speed Override (also shifts pitch, like tape speed)")
         self.assertEqual(dlg6.loop_chk.GetAccessible().GetName(0)[1], "Loop Override")
         self._assert_native_accessible_name(dlg6.bus_choice, "Bus Override")
         dlg6.Destroy()
