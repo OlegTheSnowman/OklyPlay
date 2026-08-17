@@ -4,6 +4,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Build](https://github.com/OlegTheSnowman/OklyPlay/actions/workflows/release.yml/badge.svg)
+![Tests](https://github.com/OlegTheSnowman/OklyPlay/actions/workflows/tests.yml/badge.svg)
 
 A soundboard for streamers, built to be fully usable with just a keyboard and a screen reader.
 
