@@ -108,6 +108,16 @@ pip install pytest
 python -m pytest
 ```
 
+`tests/test_soundboard.py` covers the audio engine (resampling, speed/pitch,
+fades, exclusive-bus crossfade, bus ducking), project load/save/import/export,
+hotkey parsing, and playlist logic. `TestAccessibilityLabeling` is its own
+class: it asserts `GetAccessible().GetName()` on every dialog control, so a
+control losing its accessible name fails the suite instead of shipping quietly.
+That's on top of manual passes with NVDA, JAWS, and Narrator across every
+keyboard-only path in the mixer. Tests run on every push and pull request to
+`main` (see `.github/workflows/tests.yml`); a screen-reader bug is a build
+failure here, not a follow-up ticket.
+
 ---
 
 ## License

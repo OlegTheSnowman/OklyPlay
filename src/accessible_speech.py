@@ -15,4 +15,7 @@ class Speech:
         try:
             cls.get().speak(text, interrupt=interrupt)
         except Exception:
+            # accessible_output2 drivers (SAPI, NVDA, JAWS) can raise for reasons
+            # outside this app's control, e.g. a screen reader restarting mid-speech.
+            # Losing one announcement is fine; crashing the soundboard over it is not.
             pass

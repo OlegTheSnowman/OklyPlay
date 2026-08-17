@@ -1,3 +1,4 @@
+import logging
 import wx
 import os
 import json
@@ -7,6 +8,8 @@ from audio_engine import AudioEngine
 import project_manager
 import ui_dialogs
 from version import __version__
+
+logger = logging.getLogger(__name__)
 
 # Custom wx IDs
 ID_NEW_PROJECT = wx.ID_NEW
@@ -1026,7 +1029,7 @@ class MainFrame(wx.Frame):
             return ch
         except Exception as e:
             Speech.speak(f"Error: Playback failed for {sound['name']}")
-            print(f"Playback failed: {e}")
+            logger.error("Playback failed for %s: %s", sound['name'], e)
             return None
 
     # --- Volume Adjustment Handlers ---
