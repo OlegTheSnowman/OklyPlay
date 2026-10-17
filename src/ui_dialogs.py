@@ -2,14 +2,106 @@ import wx
 import os
 import uuid
 
+import ctypes
+
+# Spacing used by every window, so dialogs line up with each other.
+PAD = 12
+GAP = 8
+
+
 def create_dialog_buttons(panel, ok_label="OK", cancel_label="Cancel"):
-    """Creates OK and Cancel buttons with the panel as their parent to avoid sizer parent assert."""
+    """Creates OK and Cancel buttons with the panel as their parent to avoid sizer parent assert.
+    OK is the default button, so Enter in any field confirms the dialog."""
     btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
     ok_btn = wx.Button(panel, wx.ID_OK, ok_label)
     cancel_btn = wx.Button(panel, wx.ID_CANCEL, cancel_label)
-    btn_sizer.Add(ok_btn, 0, wx.ALL, 5)
-    btn_sizer.Add(cancel_btn, 0, wx.ALL, 5)
+    ok_btn.SetDefault()
+    btn_sizer.Add(ok_btn, 0, wx.RIGHT, GAP)
+    btn_sizer.Add(cancel_btn, 0)
     return btn_sizer, ok_btn, cancel_btn
+
+
+class _HIGHCONTRAST(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("dwFlags", ctypes.c_uint), ("lpszDefaultScheme", ctypes.c_wchar_p)]
+
+
+def heading(parent, text, size_delta=1):
+    """Bold section label. Visual only: screen readers get names from label_control."""
+    lbl = wx.StaticText(parent, label=text)
+    font = lbl.GetFont()
+    font.SetWeight(wx.FONTWEIGHT_BOLD)
+    font.SetPointSize(font.GetPointSize() + size_delta)
+    lbl.SetFont(font)
+    return lbl
+
+
+def form_group(parent, title):
+    """A titled group box holding a two column label/field grid.
+    Returns (outer_sizer, grid, box); controls in the group must use box as their parent.
+    Screen readers announce the group title when focus enters it."""
+    box_sizer = wx.StaticBoxSizer(wx.VERTICAL, parent, title)
+    grid = wx.FlexGridSizer(0, 2, GAP, PAD)
+    grid.AddGrowableCol(1, 1)
+    box_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, GAP)
+    return box_sizer, grid, box_sizer.GetStaticBox()
+
+
+def polish_list(list_ctrl, stretch_col=0):
+    """Size every column to fit its header and contents, give the stretch column
+    the spare width, and tint alternate rows. Call after (re)populating a list.
+    The first call also hooks resizing, so the stretch column keeps filling the width."""
+    if not hasattr(list_ctrl, "_polish_width"):
+        list_ctrl._polish_width = -1
+
+        def on_size(event):
+            event.Skip()
+            # Only on a real width change: refitting can toggle the scrollbar,
+            # which sends another size event and would loop forever.
+            if event.GetSize().width != list_ctrl._polish_width:
+                list_ctrl._polish_width = event.GetSize().width
+                wx.CallAfter(lambda: list_ctrl and polish_list(list_ctrl, stretch_col))
+        list_ctrl.Bind(wx.EVT_SIZE, on_size)
+
+    count = list_ctrl.GetColumnCount()
+    for col in range(count):
+        # Header text is measured directly: LIST_AUTOSIZE_USEHEADER on the last
+        # column stretches it to the list edge, which would overflow.
+        header_w = list_ctrl.GetTextExtent(list_ctrl.GetColumn(col).GetText()).width + 2 * PAD
+        list_ctrl.SetColumnWidth(col, wx.LIST_AUTOSIZE)
+        list_ctrl.SetColumnWidth(col, max(header_w, list_ctrl.GetColumnWidth(col) + GAP))
+    spare = list_ctrl.GetClientSize().width - sum(list_ctrl.GetColumnWidth(c) for c in range(count))
+    if spare > 0 and 0 <= stretch_col < count:
+        list_ctrl.SetColumnWidth(stretch_col, list_ctrl.GetColumnWidth(stretch_col) + spare - 1)
+
+    # Under Windows high contrast the user's theme wins, so no custom tint.
+    try:
+        hc = _HIGHCONTRAST()
+        hc.cbSize = ctypes.sizeof(_HIGHCONTRAST)
+        if ctypes.windll.user32.SystemParametersInfoW(0x0042, hc.cbSize, ctypes.byref(hc), 0) and hc.dwFlags & 1:
+            return
+    except Exception:
+        pass
+    base = wx.SystemSettings.GetColour(wx.SYS_COLOUR_LISTBOX)
+    accent = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
+    mix = lambda a, b: int(a * 0.94 + b * 0.06)
+    stripe = wx.Colour(mix(base.Red(), accent.Red()), mix(base.Green(), accent.Green()), mix(base.Blue(), accent.Blue()))
+    for row in range(list_ctrl.GetItemCount()):
+        list_ctrl.SetItemBackgroundColour(row, stripe if row % 2 else base)
+
+
+def finish_dialog(dlg, panel, content, min_size=(0, 0)):
+    """Lay out a dialog around its content sizer with standard padding and size it to fit,
+    instead of a hard-coded size that clips or leaves dead space."""
+    outer = wx.BoxSizer(wx.VERTICAL)
+    outer.Add(content, 1, wx.EXPAND | wx.ALL, PAD)
+    panel.SetSizer(outer)
+    frame_sizer = wx.BoxSizer(wx.VERTICAL)
+    frame_sizer.Add(panel, 1, wx.EXPAND)
+    dlg.SetSizerAndFit(frame_sizer)
+    w, h = dlg.GetSize()
+    dlg.SetSize((max(w, min_size[0]), max(h, min_size[1])))
+    dlg.SetMinSize(dlg.GetSize())
+    dlg.CenterOnParent()
 
 class AccessibleName(wx.Accessible):
     def __init__(self, window, name):
@@ -125,33 +217,30 @@ class HotkeyCtrl(wx.TextCtrl):
 class QuickHotkeyDialog(wx.Dialog):
     """Simple dialog to assign a hotkey quickly to a sound."""
     def __init__(self, parent, name, current_hotkey=""):
-        super().__init__(parent, title=f"Set Hotkey for {name}", size=(350, 160))
-        
+        super().__init__(parent, title=f"Set Hotkey for {name}")
+
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        label = wx.StaticText(panel, label=f"Press the key combination for '{name}':")
+
+        label = wx.StaticText(panel, label=f"Press the key combination for '{name}'.")
+        hint = wx.StaticText(panel, label="Backspace clears it. Tab then Enter confirms.")
+        hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
         self.hotkey_ctrl = HotkeyCtrl(panel)
         self.hotkey_ctrl.SetValue(current_hotkey)
         self.hotkey_ctrl.hotkey_value = current_hotkey
-        
+
         # Label the control for screen readers
         label_control(self.hotkey_ctrl, f"Press the key combination you want to assign to '{name}'. Press Tab and then Enter to confirm, or Escape to cancel.")
-        
-        btn_sizer = wx.StdDialogButtonSizer()
-        ok_btn = wx.Button(panel, wx.ID_OK)
-        cancel_btn = wx.Button(panel, wx.ID_CANCEL)
-        btn_sizer.AddButton(ok_btn)
-        btn_sizer.AddButton(cancel_btn)
-        btn_sizer.Realize()
-        
-        sizer.Add(label, 0, wx.ALL | wx.EXPAND, 10)
-        sizer.Add(self.hotkey_ctrl, 0, wx.ALL | wx.EXPAND, 10)
-        sizer.Add(btn_sizer, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
-        
-        panel.SetSizer(sizer)
+
+        btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
+
+        sizer.Add(label, 0, wx.EXPAND | wx.BOTTOM, GAP)
+        sizer.Add(self.hotkey_ctrl, 0, wx.EXPAND | wx.BOTTOM, GAP)
+        sizer.Add(hint, 0, wx.BOTTOM, PAD)
+        sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT)
+
+        finish_dialog(self, panel, sizer, min_size=(380, 0))
         self.hotkey_ctrl.SetFocus()
-        self.CenterOnParent()
         
     def GetValue(self):
         return self.hotkey_ctrl.GetValue().strip()
@@ -160,49 +249,41 @@ class QuickHotkeyDialog(wx.Dialog):
 class NewProjectDialog(wx.Dialog):
     """Dialog to create a new project with Name and Path fields."""
     def __init__(self, parent):
-        super().__init__(parent, title="New Project", size=(450, 220))
-        
+        super().__init__(parent, title="New Project")
+
         panel = wx.Panel(self)
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        # Grid Sizer for form
-        grid = wx.FlexGridSizer(0, 2, 10, 10)
-        grid.AddGrowableCol(1, 1)
-        
+        group, grid, box = form_group(panel, "Project")
+
         # Name field
-        name_lbl = wx.StaticText(panel, label="Project Name:")
-        self.name_txt = wx.TextCtrl(panel)
+        name_lbl = wx.StaticText(box, label="Project Name:")
+        self.name_txt = wx.TextCtrl(box)
         label_control(self.name_txt, "Project Name")
         grid.Add(name_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.name_txt, 1, wx.EXPAND)
-        
+
         # Location field
-        loc_lbl = wx.StaticText(panel, label="Location:")
+        loc_lbl = wx.StaticText(box, label="Location:")
         loc_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.loc_txt = wx.TextCtrl(panel)
+        self.loc_txt = wx.TextCtrl(box)
         label_control(self.loc_txt, "Project Location")
-        self.browse_btn = wx.Button(panel, label="&Browse...")
+        self.browse_btn = wx.Button(box, label="&Browse...")
         label_control(self.browse_btn, "Browse Project Location")
-        loc_sizer.Add(self.loc_txt, 1, wx.EXPAND | wx.RIGHT, 5)
+        loc_sizer.Add(self.loc_txt, 1, wx.EXPAND | wx.RIGHT, GAP)
         loc_sizer.Add(self.browse_btn, 0)
         grid.Add(loc_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(loc_sizer, 1, wx.EXPAND)
         self.browse_btn.Bind(wx.EVT_BUTTON, self.OnBrowse)
-        
-        panel_sizer = wx.BoxSizer(wx.VERTICAL)
-        panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
-        
+
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(group, 1, wx.EXPAND | wx.BOTTOM, PAD)
+
         # Standard buttons
         btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel, ok_label="Create")
         ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
-            
-        panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
-        panel.SetSizer(panel_sizer)
-        
-        main_sizer.Add(panel, 1, wx.EXPAND)
-        self.SetSizer(main_sizer)
+        content.Add(btn_sizer, 0, wx.ALIGN_RIGHT)
+
+        finish_dialog(self, panel, content, min_size=(520, 0))
         self.name_txt.SetFocus()  # Set focus on first field
-        self.CenterOnParent()
 
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
@@ -239,17 +320,16 @@ class NewProjectDialog(wx.Dialog):
 class PreferencesDialog(wx.Dialog):
     """Dialog to configure output device and master volume."""
     def __init__(self, parent, devices, current_device_index, current_volume):
-        super().__init__(parent, title="Preferences", size=(400, 220))
-        
+        super().__init__(parent, title="Preferences")
+
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(0, 2, 12, 10)
-        grid.AddGrowableCol(1, 1)
-        
+        group, grid, box = form_group(panel, "Audio Output")
+
         # Output device choice
-        device_lbl = wx.StaticText(panel, label="Audio Output Device:")
+        device_lbl = wx.StaticText(box, label="Output Device:")
         self.devices = devices  # List of (index, name)
         device_names = [d[1] for d in devices]
-        self.device_choice = wx.Choice(panel, choices=device_names)
+        self.device_choice = wx.Choice(box, choices=device_names)
         label_control(self.device_choice, "Audio Output Device")
         grid.Add(device_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.device_choice, 1, wx.EXPAND)
@@ -264,22 +344,21 @@ class PreferencesDialog(wx.Dialog):
             self.device_choice.SetSelection(selected_idx)
             
         # Master volume slider
-        vol_lbl = wx.StaticText(panel, label="Master Volume:")
-        self.vol_slider = wx.Slider(panel, value=int(current_volume * 100), minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        vol_lbl = wx.StaticText(box, label="Master Volume:")
+        self.vol_slider = wx.Slider(box, value=int(current_volume * 100), minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         label_control(self.vol_slider, "Master Volume")
         grid.Add(vol_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.vol_slider, 1, wx.EXPAND)
-        
-        panel_sizer = wx.BoxSizer(wx.VERTICAL)
-        panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
-        
+
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(group, 1, wx.EXPAND | wx.BOTTOM, PAD)
+
         # Buttons
         btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
-        panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
-        panel.SetSizer(panel_sizer)
-        
+        content.Add(btn_sizer, 0, wx.ALIGN_RIGHT)
+
+        finish_dialog(self, panel, content, min_size=(460, 0))
         self.device_choice.SetFocus()  # Set focus on first field
-        self.CenterOnParent()
 
     def GetSelectedDeviceIndex(self):
         sel = self.device_choice.GetSelection()
@@ -311,7 +390,7 @@ class SoundManagerDialog(wx.Dialog):
     )
 
     def __init__(self, parent, project_data, project_dir):
-        super().__init__(parent, title="Sound Manager", size=(720, 500),
+        super().__init__(parent, title="Sound Manager",
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.project_data = project_data
         self.project_dir = project_dir
@@ -322,43 +401,45 @@ class SoundManagerDialog(wx.Dialog):
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # ── Instruction label ──────────────────────────────────────────────
+        # Instruction label
+        main_sizer.Add(heading(panel, "All Sounds"), 0, wx.BOTTOM, 4)
         hint = wx.StaticText(
             panel,
             label=(
-                "Manage all sounds. Use Ctrl+1\u20139 to assign the selected sound to a bus. "
-                "Ctrl+U clears the bus. Press F2 to edit, Delete to remove, "
-                "Ctrl+I to import from file picker, Ctrl+V to paste files copied from Explorer."
+                "Ctrl+1 to Ctrl+9 moves the selected sound to that bus, Ctrl+U clears the bus. "
+                "F2 edits, Delete removes, Ctrl+I imports from a file picker, "
+                "Ctrl+V pastes files copied in Explorer."
             )
         )
-        hint.Wrap(680)
-        main_sizer.Add(hint, 0, wx.ALL | wx.EXPAND, 8)
+        hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+        hint.Wrap(740)
+        main_sizer.Add(hint, 0, wx.EXPAND | wx.BOTTOM, GAP)
 
-        # ── Sound list ─────────────────────────────────────────────────────
-        self.sound_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        label_control(self.sound_list, "Sounds List — press Ctrl+1 through 9 to assign bus")
-        self.sound_list.InsertColumn(0, "Name", width=200)
-        self.sound_list.InsertColumn(1, "Bus", width=130)
-        self.sound_list.InsertColumn(2, "Hotkey", width=100)
-        self.sound_list.InsertColumn(3, "File", width=230)
-        main_sizer.Add(self.sound_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        # Sound list
+        self.sound_list = wx.ListCtrl(panel, size=(760, 360), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        label_control(self.sound_list, "Sounds List. Press Ctrl+1 through 9 to assign bus")
+        self.sound_list.InsertColumn(0, "Name")
+        self.sound_list.InsertColumn(1, "Bus")
+        self.sound_list.InsertColumn(2, "Hotkey")
+        self.sound_list.InsertColumn(3, "File")
+        main_sizer.Add(self.sound_list, 1, wx.EXPAND | wx.BOTTOM, PAD)
 
-        # ── Buttons row ────────────────────────────────────────────────────
+        # Buttons row. Shortcuts stay out of button labels: a tab there renders as
+        # run-together text ("RemoveDelete") and gets read aloud. The hint lists them.
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.import_btn = wx.Button(panel, label="&Import Sounds…\tCtrl+I")
-        self.edit_btn   = wx.Button(panel, label="&Edit Sound…\tF2")
-        self.remove_btn = wx.Button(panel, label="&Remove\tDelete")
+        self.import_btn = wx.Button(panel, label="&Import Sounds...")
+        self.edit_btn   = wx.Button(panel, label="&Edit Sound...")
+        self.remove_btn = wx.Button(panel, label="&Remove")
         close_btn       = wx.Button(panel, id=wx.ID_OK, label="&Close")
 
-        for b in (self.import_btn, self.edit_btn, self.remove_btn, close_btn):
-            btn_row.Add(b, 0, wx.RIGHT, 6)
+        for b in (self.import_btn, self.edit_btn, self.remove_btn):
+            btn_row.Add(b, 0, wx.RIGHT, GAP)
+        btn_row.AddStretchSpacer()
+        btn_row.Add(close_btn, 0)
 
-        main_sizer.Add(btn_row, 0, wx.ALL, 8)
+        main_sizer.Add(btn_row, 0, wx.EXPAND)
 
-        panel.SetSizer(main_sizer)
-        outer = wx.BoxSizer(wx.VERTICAL)
-        outer.Add(panel, 1, wx.EXPAND)
-        self.SetSizer(outer)
+        finish_dialog(self, panel, main_sizer)
 
         # ── Events ────────────────────────────────────────────────────────
         self.import_btn.Bind(wx.EVT_BUTTON, self.OnImport)
@@ -392,6 +473,7 @@ class SoundManagerDialog(wx.Dialog):
             self.sound_list.SetItem(idx, 2, s.get("hotkey", ""))
             self.sound_list.SetItem(idx, 3, s.get("filename", ""))
             self.sound_list.SetItemData(idx, idx)
+        polish_list(self.sound_list)
         # Restore selection
         if sel != wx.NOT_FOUND and sel < self.sound_list.GetItemCount():
             self.sound_list.Select(sel)
@@ -687,82 +769,83 @@ class AddEditSoundDialog(wx.Dialog):
     """Dialog to add or edit sound properties (name, file, bus, hotkey, volume, fade, speed, loop)."""
     def __init__(self, parent, buses, sound_data=None, existing_sounds=None):
         title = "Edit Sound" if sound_data else "Add Sound"
-        super().__init__(parent, title=title, size=(500, 530))
+        super().__init__(parent, title=title)
         
         self.buses = buses  # List of dicts (id, name)
         self.sound_data = sound_data
         self.existing_sounds = existing_sounds
         
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(0, 2, 10, 10)
-        grid.AddGrowableCol(1, 1)
+        sound_group, grid, box = form_group(panel, "Sound")
         
         # Name field
-        grid.Add(wx.StaticText(panel, label="Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.name_txt = wx.TextCtrl(panel)
+        grid.Add(wx.StaticText(box, label="Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.name_txt = wx.TextCtrl(box)
         label_control(self.name_txt, "Sound Name")
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
         # File field
-        grid.Add(wx.StaticText(panel, label="Audio File:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(wx.StaticText(box, label="Audio File:"), 0, wx.ALIGN_CENTER_VERTICAL)
         file_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.file_txt = wx.TextCtrl(panel)
+        self.file_txt = wx.TextCtrl(box)
         label_control(self.file_txt, "Audio File Path")
-        self.file_browse_btn = wx.Button(panel, label="&Browse...")
+        self.file_browse_btn = wx.Button(box, label="&Browse...")
         label_control(self.file_browse_btn, "Browse Audio File")
-        file_sizer.Add(self.file_txt, 1, wx.EXPAND | wx.RIGHT, 5)
+        file_sizer.Add(self.file_txt, 1, wx.EXPAND | wx.RIGHT, GAP)
         file_sizer.Add(self.file_browse_btn, 0)
         grid.Add(file_sizer, 1, wx.EXPAND)
         self.file_browse_btn.Bind(wx.EVT_BUTTON, self.OnBrowseFile)
         
         # Bus choice
-        grid.Add(wx.StaticText(panel, label="Bus Assignment:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(wx.StaticText(box, label="Bus Assignment:"), 0, wx.ALIGN_CENTER_VERTICAL)
         bus_names = [b["name"] for b in buses]
-        self.bus_choice = wx.Choice(panel, choices=bus_names)
+        self.bus_choice = wx.Choice(box, choices=bus_names)
         label_control(self.bus_choice, "Bus Assignment")
         grid.Add(self.bus_choice, 1, wx.EXPAND)
         if bus_names:
             self.bus_choice.SetSelection(0)
             
         # Hotkey field
-        grid.Add(wx.StaticText(panel, label="Hotkey:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.hotkey_txt = HotkeyCtrl(panel)
+        grid.Add(wx.StaticText(box, label="Hotkey:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.hotkey_txt = HotkeyCtrl(box)
         label_control(self.hotkey_txt, "Hotkey Assignment")
         grid.Add(self.hotkey_txt, 1, wx.EXPAND)
         
+        play_group, grid, box = form_group(panel, "Playback")
+
         # Volume slider
-        grid.Add(wx.StaticText(panel, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.vol_slider = wx.Slider(panel, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        grid.Add(wx.StaticText(box, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.vol_slider = wx.Slider(box, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         label_control(self.vol_slider, "Volume")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
         # Fade In spin
-        grid.Add(wx.StaticText(panel, label="Fade In (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.fade_in_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
+        grid.Add(wx.StaticText(box, label="Fade In (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fade_in_spin = wx.SpinCtrl(box, min=0, max=10000, initial=0)
         label_control(self.fade_in_spin, "Fade In Milliseconds")
         grid.Add(self.fade_in_spin, 1, wx.EXPAND)
         
         # Fade Out spin
-        grid.Add(wx.StaticText(panel, label="Fade Out (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.fade_out_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
+        grid.Add(wx.StaticText(box, label="Fade Out (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fade_out_spin = wx.SpinCtrl(box, min=0, max=10000, initial=0)
         label_control(self.fade_out_spin, "Fade Out Milliseconds")
         grid.Add(self.fade_out_spin, 1, wx.EXPAND)
         
         # Speed double spin
-        grid.Add(wx.StaticText(panel, label="Playback Speed:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.speed_spin = wx.SpinCtrlDouble(panel, min=0.1, max=3.0, initial=1.0, inc=0.1)
+        grid.Add(wx.StaticText(box, label="Playback Speed:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.speed_spin = wx.SpinCtrlDouble(box, min=0.1, max=3.0, initial=1.0, inc=0.1)
         label_control(self.speed_spin, "Playback Speed Multiplier (also shifts pitch, like tape speed)")
         grid.Add(self.speed_spin, 1, wx.EXPAND)
 
         # Pitch spin (independent from speed)
-        grid.Add(wx.StaticText(panel, label="Pitch (semitones):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.pitch_spin = wx.SpinCtrlDouble(panel, min=-12.0, max=12.0, initial=0.0, inc=0.5)
+        grid.Add(wx.StaticText(box, label="Pitch (semitones):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.pitch_spin = wx.SpinCtrlDouble(box, min=-12.0, max=12.0, initial=0.0, inc=0.5)
         label_control(self.pitch_spin, "Pitch Shift in Semitones. Negative values lower pitch, positive raise it. Zero means no change.")
         grid.Add(self.pitch_spin, 1, wx.EXPAND)
 
         # Loop checkbox
-        grid.Add(wx.StaticText(panel, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.loop_chk = wx.CheckBox(panel, label="Loop Audio")
+        grid.Add(wx.StaticText(box, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.loop_chk = wx.CheckBox(box, label="Loop Audio")
         label_control(self.loop_chk, "Loop Audio")
         grid.Add(self.loop_chk, 1, wx.EXPAND)
 
@@ -792,18 +875,17 @@ class AddEditSoundDialog(wx.Dialog):
             self.pitch_spin.SetValue(default_scen.get("pitch_semitones", 0.0))
             self.loop_chk.SetValue(default_scen.get("loop", False))
             
-        panel_sizer = wx.BoxSizer(wx.VERTICAL)
-        panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(sound_group, 0, wx.EXPAND | wx.BOTTOM, PAD)
+        content.Add(play_group, 0, wx.EXPAND | wx.BOTTOM, PAD)
         
         # Buttons
         btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
         ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
-            
-        panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
-        panel.SetSizer(panel_sizer)
+        content.Add(btn_sizer, 0, wx.ALIGN_RIGHT)
         
+        finish_dialog(self, panel, content, min_size=(520, 0))
         self.name_txt.SetFocus()  # Set focus on first field
-        self.CenterOnParent()
 
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
@@ -884,49 +966,50 @@ class AddEditBusDialog(wx.Dialog):
     """Dialog to create or edit a bus's name, mode, and volume."""
     def __init__(self, parent, bus_data=None):
         title = "Edit Bus" if bus_data else "Add Bus"
-        super().__init__(parent, title=title, size=(420, 560))
+        super().__init__(parent, title=title)
         self.bus_data = bus_data
         
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(0, 2, 12, 10)
-        grid.AddGrowableCol(1, 1)
+        bus_group, grid, box = form_group(panel, "Bus")
         
         # Name field
-        grid.Add(wx.StaticText(panel, label="Bus Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.name_txt = wx.TextCtrl(panel)
+        grid.Add(wx.StaticText(box, label="Bus Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.name_txt = wx.TextCtrl(box)
         label_control(self.name_txt, "Bus Name")
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
         # Mode choice
-        grid.Add(wx.StaticText(panel, label="Playback Mode:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.mode_choice = wx.Choice(panel, choices=["exclusive", "layered"])
+        grid.Add(wx.StaticText(box, label="Playback Mode:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.mode_choice = wx.Choice(box, choices=["exclusive", "layered"])
         label_control(self.mode_choice, "Playback Mode")
         grid.Add(self.mode_choice, 1, wx.EXPAND)
         self.mode_choice.SetSelection(1)  # Default layered
         self.mode_choice.Bind(wx.EVT_CHOICE, self.OnModeChanged)
         
         # Volume slider
-        grid.Add(wx.StaticText(panel, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.vol_slider = wx.Slider(panel, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        grid.Add(wx.StaticText(box, label="Volume:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.vol_slider = wx.Slider(box, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         label_control(self.vol_slider, "Volume")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
-        
-        # Hotkey field
-        grid.Add(wx.StaticText(panel, label="Hotkey:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.hotkey_txt = HotkeyCtrl(panel)
-        label_control(self.hotkey_txt, "Bus Hotkey")
-        grid.Add(self.hotkey_txt, 1, wx.EXPAND)
 
         # Crossfade field
-        grid.Add(wx.StaticText(panel, label="Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.crossfade_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=500)
+        grid.Add(wx.StaticText(box, label="Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.crossfade_spin = wx.SpinCtrl(box, min=0, max=10000, initial=500)
         label_control(self.crossfade_spin, "Crossfade milliseconds")
         grid.Add(self.crossfade_spin, 1, wx.EXPAND)
 
+        hotkey_group, grid, box = form_group(panel, "Hotkey Playlist")
+
+        # Hotkey field
+        grid.Add(wx.StaticText(box, label="Hotkey:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.hotkey_txt = HotkeyCtrl(box)
+        label_control(self.hotkey_txt, "Bus Hotkey")
+        grid.Add(self.hotkey_txt, 1, wx.EXPAND)
+
         # Hotkey Action choice
-        grid.Add(wx.StaticText(panel, label="Hotkey Action:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(wx.StaticText(box, label="Hotkey Action:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.action_choices = ["Loop (Shuffle)", "Loop (Sequential)", "Single (Shuffle)", "Single (Sequential)"]
-        self.action_choice = wx.Choice(panel, choices=self.action_choices)
+        self.action_choice = wx.Choice(box, choices=self.action_choices)
         label_control(self.action_choice, "Hotkey Action")
         grid.Add(self.action_choice, 1, wx.EXPAND)
         self.action_choice.SetSelection(2)  # Default Single (Shuffle) for layered
@@ -934,28 +1017,30 @@ class AddEditBusDialog(wx.Dialog):
         self.action_mapping = ["loop_shuffle", "loop_sequential", "single_shuffle", "single_sequential"]
 
         # Track Crossfade field
-        grid.Add(wx.StaticText(panel, label="Track Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.track_crossfade_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=2000)
+        grid.Add(wx.StaticText(box, label="Track Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.track_crossfade_spin = wx.SpinCtrl(box, min=0, max=10000, initial=2000)
         label_control(self.track_crossfade_spin, "Track Crossfade milliseconds")
         grid.Add(self.track_crossfade_spin, 1, wx.EXPAND)
 
+        duck_group, grid, box = form_group(panel, "Ducking")
+
         # Ducking Trigger Checkbox
-        grid.Add(wx.StaticText(panel, label="Ducking Trigger:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.duck_trigger_chk = wx.CheckBox(panel, label="Duck other buses when playing")
+        grid.Add(wx.StaticText(box, label="When playing:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.duck_trigger_chk = wx.CheckBox(box, label="Duck other buses when playing")
         label_control(self.duck_trigger_chk, "Duck other buses when playing")
         grid.Add(self.duck_trigger_chk, 1, wx.EXPAND)
         self.duck_trigger_chk.Bind(wx.EVT_CHECKBOX, self.OnDuckTriggerChanged)
 
         # Ducking Factor Slider
-        self.duck_factor_lbl = wx.StaticText(panel, label="Duck Volume Level:")
+        self.duck_factor_lbl = wx.StaticText(box, label="Duck Volume Level:")
         grid.Add(self.duck_factor_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.duck_factor_slider = wx.Slider(panel, value=30, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        self.duck_factor_slider = wx.Slider(box, value=30, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         label_control(self.duck_factor_slider, "Duck Volume Level")
         grid.Add(self.duck_factor_slider, 1, wx.EXPAND)
 
         # Duckable Checkbox
-        grid.Add(wx.StaticText(panel, label="Ducking Susceptibility:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.duckable_chk = wx.CheckBox(panel, label="Can be ducked by other buses")
+        grid.Add(wx.StaticText(box, label="When others play:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.duckable_chk = wx.CheckBox(box, label="Can be ducked by other buses")
         label_control(self.duckable_chk, "Can be ducked by other buses")
         grid.Add(self.duckable_chk, 1, wx.EXPAND)
         
@@ -991,18 +1076,17 @@ class AddEditBusDialog(wx.Dialog):
             self.duck_factor_lbl.Enable(False)
             self.duckable_chk.SetValue(False)
             
-        panel_sizer = wx.BoxSizer(wx.VERTICAL)
-        panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
+        content = wx.BoxSizer(wx.VERTICAL)
+        for group in (bus_group, hotkey_group, duck_group):
+            content.Add(group, 0, wx.EXPAND | wx.BOTTOM, PAD)
         
         # Buttons
         btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
         ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
-            
-        panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
-        panel.SetSizer(panel_sizer)
+        content.Add(btn_sizer, 0, wx.ALIGN_RIGHT)
         
+        finish_dialog(self, panel, content, min_size=(480, 0))
         self.name_txt.SetFocus()  # Set focus on first field
-        self.CenterOnParent()
  
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
@@ -1087,16 +1171,15 @@ class AddEditBusDialog(wx.Dialog):
 class ManageBusesDialog(wx.Dialog):
     """Dialog to list, add, edit, and remove project buses."""
     def __init__(self, parent, project_data):
-        super().__init__(parent, title="Manage Buses", size=(890, 350))
+        super().__init__(parent, title="Manage Buses", style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.project_data = project_data  # Direct reference to mutate in place
         
         panel = wx.Panel(self)
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Left Side: Bus list
         list_sizer = wx.BoxSizer(wx.VERTICAL)
-        list_lbl = wx.StaticText(panel, label="Buses:")
-        self.bus_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        list_lbl = heading(panel, "Buses")
+        self.bus_list = wx.ListCtrl(panel, size=(820, 260), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.bus_list, "Buses List")
         self.bus_list.InsertColumn(0, "Name", width=120)
         self.bus_list.InsertColumn(1, "Mode", width=80)
@@ -1107,7 +1190,7 @@ class ManageBusesDialog(wx.Dialog):
         self.bus_list.InsertColumn(6, "Ducking", width=130)
         self.bus_list.InsertColumn(7, "Action", width=140)
         
-        list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
+        list_sizer.Add(list_lbl, 0, wx.BOTTOM, GAP)
         list_sizer.Add(self.bus_list, 1, wx.EXPAND)
         
         # Right Side: Action buttons
@@ -1129,12 +1212,9 @@ class ManageBusesDialog(wx.Dialog):
         self.bus_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnEditBus)
         
         panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.ALL, 15)
-        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 15)
-        panel.SetSizer(panel_sizer)
-        
-        main_sizer.Add(panel, 1, wx.EXPAND)
-        self.SetSizer(main_sizer)
+        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.RIGHT, PAD)
+        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.TOP, 26)
+        finish_dialog(self, panel, panel_sizer)
         
         self.PopulateList()
         self.CenterOnParent()
@@ -1170,6 +1250,7 @@ class ManageBusesDialog(wx.Dialog):
             self.bus_list.SetItem(idx, 7, action_str)
             # Associate bus dict to index
             self.bus_list.SetItemData(idx, idx)
+        polish_list(self.bus_list)
 
     def OnAddBus(self, event):
         dlg = AddEditBusDialog(self)
@@ -1243,59 +1324,58 @@ class AddEditScenarioDialog(wx.Dialog):
     """Dialog to configure or edit a specific sound scenario preset."""
     def __init__(self, parent, buses, scenario_data=None):
         title = "Edit Scenario" if scenario_data else "Add Scenario"
-        super().__init__(parent, title=title, size=(450, 470))
+        super().__init__(parent, title=title)
         
         self.buses = buses
         panel = wx.Panel(self)
-        grid = wx.FlexGridSizer(0, 2, 10, 10)
-        grid.AddGrowableCol(1, 1)
+        group, grid, box = form_group(panel, "Scenario Settings")
         
         # Scenario Name
-        grid.Add(wx.StaticText(panel, label="Scenario Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.name_txt = wx.TextCtrl(panel)
+        grid.Add(wx.StaticText(box, label="Scenario Name:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.name_txt = wx.TextCtrl(box)
         label_control(self.name_txt, "Scenario Name")
         grid.Add(self.name_txt, 1, wx.EXPAND)
         
         # Volume
-        grid.Add(wx.StaticText(panel, label="Volume Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.vol_slider = wx.Slider(panel, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        grid.Add(wx.StaticText(box, label="Volume Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.vol_slider = wx.Slider(box, value=100, minValue=0, maxValue=100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         label_control(self.vol_slider, "Volume Override")
         grid.Add(self.vol_slider, 1, wx.EXPAND)
         
         # Fade In
-        grid.Add(wx.StaticText(panel, label="Fade In Override (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.fade_in_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
+        grid.Add(wx.StaticText(box, label="Fade In Override (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fade_in_spin = wx.SpinCtrl(box, min=0, max=10000, initial=0)
         label_control(self.fade_in_spin, "Fade In Milliseconds")
         grid.Add(self.fade_in_spin, 1, wx.EXPAND)
         
         # Fade Out
-        grid.Add(wx.StaticText(panel, label="Fade Out Override (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.fade_out_spin = wx.SpinCtrl(panel, min=0, max=10000, initial=0)
+        grid.Add(wx.StaticText(box, label="Fade Out Override (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fade_out_spin = wx.SpinCtrl(box, min=0, max=10000, initial=0)
         label_control(self.fade_out_spin, "Fade Out Milliseconds")
         grid.Add(self.fade_out_spin, 1, wx.EXPAND)
         
         # Speed
-        grid.Add(wx.StaticText(panel, label="Speed Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.speed_spin = wx.SpinCtrlDouble(panel, min=0.1, max=3.0, initial=1.0, inc=0.1)
+        grid.Add(wx.StaticText(box, label="Speed Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.speed_spin = wx.SpinCtrlDouble(box, min=0.1, max=3.0, initial=1.0, inc=0.1)
         label_control(self.speed_spin, "Speed Override (also shifts pitch, like tape speed)")
         grid.Add(self.speed_spin, 1, wx.EXPAND)
 
         # Pitch
-        grid.Add(wx.StaticText(panel, label="Pitch Override (semitones):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.pitch_spin = wx.SpinCtrlDouble(panel, min=-12.0, max=12.0, initial=0.0, inc=0.5)
+        grid.Add(wx.StaticText(box, label="Pitch Override (semitones):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.pitch_spin = wx.SpinCtrlDouble(box, min=-12.0, max=12.0, initial=0.0, inc=0.5)
         label_control(self.pitch_spin, "Pitch Shift in Semitones. Negative lowers pitch, positive raises it. Zero means no change.")
         grid.Add(self.pitch_spin, 1, wx.EXPAND)
 
         # Loop
-        grid.Add(wx.StaticText(panel, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.loop_chk = wx.CheckBox(panel, label="Loop Override")
+        grid.Add(wx.StaticText(box, label=""), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.loop_chk = wx.CheckBox(box, label="Loop Override")
         label_control(self.loop_chk, "Loop Override")
         grid.Add(self.loop_chk, 1, wx.EXPAND)
 
         # Bus Override
-        grid.Add(wx.StaticText(panel, label="Bus Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(wx.StaticText(box, label="Bus Override:"), 0, wx.ALIGN_CENTER_VERTICAL)
         bus_choices = ["None (Use Default Bus)"] + [b["name"] for b in buses]
-        self.bus_choice = wx.Choice(panel, choices=bus_choices)
+        self.bus_choice = wx.Choice(box, choices=bus_choices)
         label_control(self.bus_choice, "Bus Override")
         grid.Add(self.bus_choice, 1, wx.EXPAND)
         self.bus_choice.SetSelection(0)
@@ -1317,18 +1397,16 @@ class AddEditScenarioDialog(wx.Dialog):
                         self.bus_choice.SetSelection(idx + 1)
                         break
                         
-        panel_sizer = wx.BoxSizer(wx.VERTICAL)
-        panel_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 15)
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(group, 0, wx.EXPAND | wx.BOTTOM, PAD)
         
         # Buttons
         btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
         ok_btn.Bind(wx.EVT_BUTTON, self.OnOK)
-            
-        panel_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM | wx.RIGHT, 15)
-        panel.SetSizer(panel_sizer)
+        content.Add(btn_sizer, 0, wx.ALIGN_RIGHT)
         
+        finish_dialog(self, panel, content, min_size=(500, 0))
         self.name_txt.SetFocus()  # Set focus on first field
-        self.CenterOnParent()
 
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
@@ -1359,18 +1437,17 @@ class AddEditScenarioDialog(wx.Dialog):
 class EditScenariosDialog(wx.Dialog):
     """Dialog to manage scenarios associated with a specific sound."""
     def __init__(self, parent, buses, sound_data):
-        super().__init__(parent, title=f"Scenarios for {sound_data['name']}", size=(650, 400))
+        super().__init__(parent, title=f"Scenarios for {sound_data['name']}", style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.buses = buses
         self.sound_data = sound_data  # Direct reference
         
         panel = wx.Panel(self)
         
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Left Side: Scenarios List
         list_sizer = wx.BoxSizer(wx.VERTICAL)
-        list_lbl = wx.StaticText(panel, label="Scenarios:")
-        self.scen_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        list_lbl = heading(panel, "Scenarios")
+        self.scen_list = wx.ListCtrl(panel, size=(640, 240), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.scen_list, "Scenarios List")
         self.scen_list.InsertColumn(0, "Name", width=140)
         self.scen_list.InsertColumn(1, "Vol", width=45)
@@ -1381,7 +1458,7 @@ class EditScenariosDialog(wx.Dialog):
         self.scen_list.InsertColumn(6, "Loop", width=45)
         self.scen_list.InsertColumn(7, "Bus Override", width=110)
         
-        list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
+        list_sizer.Add(list_lbl, 0, wx.BOTTOM, GAP)
         list_sizer.Add(self.scen_list, 1, wx.EXPAND)
         
         # Right Side: Action buttons
@@ -1406,12 +1483,9 @@ class EditScenariosDialog(wx.Dialog):
         self.scen_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnEditScenario)
         
         panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.ALL, 15)
-        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 15)
-        panel.SetSizer(panel_sizer)
-        
-        main_sizer.Add(panel, 1, wx.EXPAND)
-        self.SetSizer(main_sizer)
+        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.RIGHT, PAD)
+        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.TOP, 26)
+        finish_dialog(self, panel, panel_sizer)
         
         self.PopulateList()
         self.CenterOnParent()
@@ -1443,6 +1517,7 @@ class EditScenariosDialog(wx.Dialog):
                         break
             self.scen_list.SetItem(idx, 7, bus_name)
             self.scen_list.SetItemData(idx, idx)
+        polish_list(self.scen_list)
 
     def OnAddScenario(self, event):
         dlg = AddEditScenarioDialog(self, self.buses)
@@ -1527,23 +1602,22 @@ class EditScenariosDialog(wx.Dialog):
 class ProjectManagerDialog(wx.Dialog):
     """Dialog to select, open, manage, and delete projects."""
     def __init__(self, parent, recent_projects, last_project_path=None):
-        super().__init__(parent, title="Project Manager", size=(600, 400))
+        super().__init__(parent, title="Project Manager", style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.recent_projects = list(recent_projects)  # Copy
         self.selected_project_path = None
         self.action = None  # 'open', 'create', 'browse', 'exit'
         
         panel = wx.Panel(self)
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         
         # Left Side: Projects List
         list_sizer = wx.BoxSizer(wx.VERTICAL)
-        list_lbl = wx.StaticText(panel, label="Recent Projects:")
-        self.projects_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        list_lbl = heading(panel, "Recent Projects")
+        self.projects_list = wx.ListCtrl(panel, size=(560, 280), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.projects_list, "Recent Projects List")
         self.projects_list.InsertColumn(0, "Name", width=180)
         self.projects_list.InsertColumn(1, "Path", width=250)
         
-        list_sizer.Add(list_lbl, 0, wx.BOTTOM, 5)
+        list_sizer.Add(list_lbl, 0, wx.BOTTOM, GAP)
         list_sizer.Add(self.projects_list, 1, wx.EXPAND)
         
         # Right Side: Buttons
@@ -1573,12 +1647,9 @@ class ProjectManagerDialog(wx.Dialog):
         
         # Layout
         panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.ALL, 15)
-        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 15)
-        panel.SetSizer(panel_sizer)
-        
-        main_sizer.Add(panel, 1, wx.EXPAND)
-        self.SetSizer(main_sizer)
+        panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.RIGHT, PAD)
+        panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.TOP, 26)
+        finish_dialog(self, panel, panel_sizer)
         
         self.PopulateList(last_project_path)
         self.projects_list.SetFocus()
@@ -1593,6 +1664,7 @@ class ProjectManagerDialog(wx.Dialog):
             self.projects_list.SetItemData(idx, idx)
             if last_project_path and proj["path"] == last_project_path:
                 select_idx = idx
+        polish_list(self.projects_list, stretch_col=1)
                 
         if self.recent_projects:
             self.projects_list.Select(select_idx)

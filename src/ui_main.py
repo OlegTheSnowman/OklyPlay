@@ -40,7 +40,7 @@ ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
 
 class MainFrame(wx.Frame):
     def __init__(self, parent, title="OklyPlay Soundboard"):
-        super().__init__(parent, title=title, size=(800, 600))
+        super().__init__(parent, title=title, size=(960, 640))
         
         # Audio Engine and Project attributes
         self.audio_engine = None
@@ -75,53 +75,59 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnClose)
 
     def InitUI(self):
+        pad, gap = ui_dialogs.PAD, ui_dialogs.GAP
+
         # Create Splitter Window
-        self.splitter = wx.SplitterWindow(self, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
-        
+        self.splitter = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE | wx.SP_NOBORDER)
+        self.splitter.SetMinimumPaneSize(160)
+
         # Left Panel (Buses)
         self.left_panel = wx.Panel(self.splitter)
         left_sizer = wx.BoxSizer(wx.VERTICAL)
-        left_lbl = wx.StaticText(self.left_panel, label="Buses:")
+        left_lbl = ui_dialogs.heading(self.left_panel, "Buses")
         self.buses_list = wx.ListBox(self.left_panel, style=wx.LB_SINGLE)
         ui_dialogs.label_control(self.buses_list, "Buses")
-        left_sizer.Add(left_lbl, 0, wx.ALL, 5)
-        left_sizer.Add(self.buses_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        left_sizer.Add(left_lbl, 0, wx.LEFT | wx.TOP | wx.BOTTOM, pad)
+        left_sizer.Add(self.buses_list, 1, wx.EXPAND | wx.LEFT | wx.BOTTOM, pad)
         self.left_panel.SetSizer(left_sizer)
-        
+
         # Right Panel (Sounds)
         self.right_panel = wx.Panel(self.splitter)
         right_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Search bar
-        search_row = wx.BoxSizer(wx.HORIZONTAL)
+        # Heading row: section title on the left, search on the right
+        head_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.sounds_heading = ui_dialogs.heading(self.right_panel, "Sounds")
+        head_row.Add(self.sounds_heading, 0, wx.ALIGN_CENTER_VERTICAL)
+        head_row.AddStretchSpacer()
         search_lbl = wx.StaticText(self.right_panel, label="Search:")
-        self.search_ctrl = wx.TextCtrl(self.right_panel)
+        self.search_ctrl = wx.TextCtrl(self.right_panel, size=(260, -1))
+        self.search_ctrl.SetHint("Type to filter")
         ui_dialogs.label_control(self.search_ctrl, "Search sounds. Type to filter the list below.")
         self.search_ctrl.Bind(wx.EVT_TEXT, self.OnSearchChanged)
-        search_row.Add(search_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        search_row.Add(self.search_ctrl, 1, wx.EXPAND)
-        right_sizer.Add(search_row, 0, wx.EXPAND | wx.ALL, 5)
+        head_row.Add(search_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, gap)
+        head_row.Add(self.search_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
+        right_sizer.Add(head_row, 0, wx.EXPAND | wx.ALL, pad)
 
-        right_lbl = wx.StaticText(self.right_panel, label="Sounds:")
         self.sounds_list = wx.ListCtrl(self.right_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         ui_dialogs.label_control(self.sounds_list, "Sounds")
-        self.sounds_list.InsertColumn(0, "Name", width=250)
-        self.sounds_list.InsertColumn(1, "Hotkey", width=100)
-        self.sounds_list.InsertColumn(2, "Scenarios", width=120)
+        self.sounds_list.InsertColumn(0, "Name")
+        self.sounds_list.InsertColumn(1, "Hotkey")
+        self.sounds_list.InsertColumn(2, "Scenarios")
 
-        right_sizer.Add(right_lbl, 0, wx.LEFT | wx.RIGHT, 5)
-        right_sizer.Add(self.sounds_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        right_sizer.Add(self.sounds_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, pad)
         self.right_panel.SetSizer(right_sizer)
-        
+
         # Split layout
         self.splitter.SplitVertically(self.left_panel, self.right_panel, 220)
-        
+
         # Create Menu Bar
         self.CreateMenuBar()
-        
-        # Create Status Bar (3 fields)
-        self.status_bar = self.CreateStatusBar(3)
-        self.status_bar.SetStatusWidths([-2, -1, -1])
+
+        # Create Status Bar: bus, bus volume, master volume, playing count
+        self.status_bar = self.CreateStatusBar(4)
+        self.status_bar.SetStatusWidths([-3, -2, -2, -1])
+        self.SetMinSize((640, 420))
         
         # Bind events
         self.buses_list.Bind(wx.EVT_LISTBOX, self.OnBusSelected)
@@ -402,8 +408,9 @@ class MainFrame(wx.Frame):
             self.sounds_list.InsertItem(idx, sound["name"])
             self.sounds_list.SetItem(idx, 1, sound.get("hotkey", ""))
             scen_count = len(sound.get("scenarios", []))
-            self.sounds_list.SetItem(idx, 2, f"{scen_count} scenarios")
+            self.sounds_list.SetItem(idx, 2, f"{scen_count} scenario" + ("" if scen_count == 1 else "s"))
             self.sounds_list.SetItemData(idx, idx)
+        ui_dialogs.polish_list(self.sounds_list)
 
     def OnSearchChanged(self, event):
         """Filter sounds list as the user types in the search bar."""
@@ -524,23 +531,40 @@ class MainFrame(wx.Frame):
                 return b
         return None
 
+    @staticmethod
+    def _SetIfChanged(setter, getter, value):
+        if getter() != value:
+            setter(value)
+
+    def _SetSoundsHeading(self, text):
+        self.sounds_heading.SetLabel(text)
+        self.right_panel.Layout()
+
     def UpdateStatusBar(self):
         if not self.project_data:
+            self._SetIfChanged(self.SetTitle, self.GetTitle, "OklyPlay Soundboard")
             self.status_bar.SetStatusText("No project loaded", 0)
-            self.status_bar.SetStatusText("", 1)
-            self.status_bar.SetStatusText("", 2)
+            for field in (1, 2, 3):
+                self.status_bar.SetStatusText("", field)
             return
-            
+
+        # Only touch the title and heading when they change: rewriting a window title
+        # can make a screen reader announce it again on every status refresh.
+        self._SetIfChanged(self.SetTitle, self.GetTitle, f"{self.project_data.get('name', 'Unnamed')} - OklyPlay Soundboard")
         bus = self.GetSelectedBus()
         if bus:
             self.status_bar.SetStatusText(f"Bus: {bus['name']} ({bus['mode']})", 0)
-            self.status_bar.SetStatusText(f"Bus Vol: {int(bus['volume']*100)}%", 1)
+            self.status_bar.SetStatusText(f"Bus volume: {int(round(bus['volume']*100))}%", 1)
+            self._SetIfChanged(self._SetSoundsHeading, self.sounds_heading.GetLabel, f"{bus['name']} sounds")
         else:
             self.status_bar.SetStatusText("", 0)
             self.status_bar.SetStatusText("", 1)
+            self._SetIfChanged(self._SetSoundsHeading, self.sounds_heading.GetLabel, "Sounds")
+        master = self.project_data.get("master_volume", 0.8)
+        self.status_bar.SetStatusText(f"Master: {int(round(master*100))}%", 2)
             
         count = self.audio_engine.get_active_channels_count() if self.audio_engine else 0
-        self.status_bar.SetStatusText(f"Playing: {count}", 2)
+        self.status_bar.SetStatusText(f"Playing: {count}", 3)
 
     # --- File Menu Handlers ---
     def OnNewProject(self, event):
