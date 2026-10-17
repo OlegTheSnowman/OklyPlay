@@ -6,6 +6,14 @@ import uuid
 from accessible_speech import Speech
 import project_manager
 
+# Bus hotkey behaviours: stored code and the label shown for it.
+HOTKEY_ACTIONS = [
+    ("loop_shuffle", "Loop (Shuffle)"),
+    ("loop_sequential", "Loop (Sequential)"),
+    ("single_shuffle", "Single (Shuffle)"),
+    ("single_sequential", "Single (Sequential)"),
+]
+
 # Spacing used by every window, so dialogs line up with each other.
 PAD = 12
 GAP = 8
@@ -926,7 +934,7 @@ class AddEditBusDialog(wx.Dialog):
 
         # Crossfade field
         grid.Add(wx.StaticText(box, label="Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.crossfade_spin = wx.SpinCtrl(box, min=0, max=10000, initial=500)
+        self.crossfade_spin = wx.SpinCtrl(box, min=0, max=10000)
         label_control(self.crossfade_spin, "Crossfade milliseconds")
         grid.Add(self.crossfade_spin, 1, wx.EXPAND)
 
@@ -940,17 +948,14 @@ class AddEditBusDialog(wx.Dialog):
 
         # Hotkey Action choice
         grid.Add(wx.StaticText(box, label="Hotkey Action:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.action_choices = ["Loop (Shuffle)", "Loop (Sequential)", "Single (Shuffle)", "Single (Sequential)"]
-        self.action_choice = wx.Choice(box, choices=self.action_choices)
+        self.action_choice = wx.Choice(box, choices=[label for _, label in HOTKEY_ACTIONS])
         label_control(self.action_choice, "Hotkey Action")
         grid.Add(self.action_choice, 1, wx.EXPAND)
-        self.action_choice.SetSelection(2)  # Default Single (Shuffle) for layered
-        
-        self.action_mapping = ["loop_shuffle", "loop_sequential", "single_shuffle", "single_sequential"]
+        self.action_mapping = [code for code, _ in HOTKEY_ACTIONS]
 
         # Track Crossfade field
         grid.Add(wx.StaticText(box, label="Track Crossfade (ms):"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.track_crossfade_spin = wx.SpinCtrl(box, min=0, max=10000, initial=2000)
+        self.track_crossfade_spin = wx.SpinCtrl(box, min=0, max=10000)
         label_control(self.track_crossfade_spin, "Track Crossfade milliseconds")
         grid.Add(self.track_crossfade_spin, 1, wx.EXPAND)
 
@@ -979,35 +984,26 @@ class AddEditBusDialog(wx.Dialog):
         if bus_data:
             self.name_txt.SetValue(bus_data.get("name", ""))
             mode = bus_data.get("mode", "layered")
-            self.mode_choice.SetSelection(0 if mode == "exclusive" else 1)
+            self.mode_choice.SetStringSelection(mode if mode == "exclusive" else "layered")
             self.vol_slider.SetValue(int(bus_data.get("volume", 1.0) * 100))
             self.hotkey_txt.SetValue(bus_data.get("hotkey", ""))
             self.hotkey_txt.hotkey_value = bus_data.get("hotkey", "")
-            self.crossfade_spin.SetValue(bus_data.get("crossfade_ms", 500 if mode == "exclusive" else 0))
-            
-            action = bus_data.get("hotkey_action", "loop_shuffle" if mode == "exclusive" else "single_shuffle")
-            try:
-                action_idx = self.action_mapping.index(action)
-                self.action_choice.SetSelection(action_idx)
-            except ValueError:
-                self.action_choice.SetSelection(0 if mode == "exclusive" else 2)
-                
-            self.track_crossfade_spin.SetValue(bus_data.get("track_crossfade_ms", 2000 if mode == "exclusive" else 0))
-            
+            self._ShowModeSettings(bus_data)
+
             duck_factor = bus_data.get("duck_factor", 1.0)
             is_triggering = duck_factor < 1.0
             self.duck_trigger_chk.SetValue(is_triggering)
             self.duck_factor_slider.SetValue(int(duck_factor * 100) if is_triggering else 30)
             self.duck_factor_slider.Enable(is_triggering)
             self.duck_factor_lbl.Enable(is_triggering)
-            self.duckable_chk.SetValue(bus_data.get("duckable", True if mode == "exclusive" else False))
         else:
+            # New bus: layered is preselected, so show the layered defaults
+            self._ShowModeSettings({"mode": "layered"})
             self.duck_trigger_chk.SetValue(False)
             self.duck_factor_slider.SetValue(30)
             self.duck_factor_slider.Enable(False)
             self.duck_factor_lbl.Enable(False)
-            self.duckable_chk.SetValue(False)
-            
+
         content = wx.BoxSizer(wx.VERTICAL)
         for group in (bus_group, hotkey_group, duck_group):
             content.Add(group, 0, wx.EXPAND | wx.BOTTOM, PAD)
@@ -1046,20 +1042,21 @@ class AddEditBusDialog(wx.Dialog):
         self.duck_factor_lbl.Enable(triggered)
  
     def OnModeChanged(self, event):
-        sel = self.mode_choice.GetSelection()
-        if sel == 0:  # exclusive
-            self.action_choice.SetSelection(0)  # Loop (Shuffle)
-            self.crossfade_spin.SetValue(500)
-            self.track_crossfade_spin.SetValue(2000)
-            self.duckable_chk.SetValue(True)
-        else:  # layered
-            self.action_choice.SetSelection(2)  # Single (Shuffle)
-            self.crossfade_spin.SetValue(0)
-            self.track_crossfade_spin.SetValue(0)
-            self.duckable_chk.SetValue(False)
+        # Switching mode suggests that mode's defaults
+        self._ShowModeSettings({"mode": self.mode_choice.GetStringSelection()})
+
+    def _ShowModeSettings(self, bus):
+        """Fill the mode-dependent controls from bus, defaulting per its mode."""
+        action = project_manager.bus_setting(bus, "hotkey_action")
+        if action not in self.action_mapping:
+            action = project_manager.bus_setting({"mode": bus.get("mode")}, "hotkey_action")
+        self.action_choice.SetSelection(self.action_mapping.index(action))
+        self.crossfade_spin.SetValue(project_manager.bus_setting(bus, "crossfade_ms"))
+        self.track_crossfade_spin.SetValue(project_manager.bus_setting(bus, "track_crossfade_ms"))
+        self.duckable_chk.SetValue(project_manager.bus_setting(bus, "duckable"))
 
     def GetBusData(self):
-        sel_mode = "exclusive" if self.mode_choice.GetSelection() == 0 else "layered"
+        sel_mode = self.mode_choice.GetStringSelection()
         action_idx = self.action_choice.GetSelection()
         hotkey_action = self.action_mapping[action_idx] if action_idx != wx.NOT_FOUND else "single_shuffle"
         
@@ -1137,11 +1134,11 @@ class ManageBusesDialog(wx.Dialog):
             self.bus_list.SetItem(idx, 1, bus.get("mode", "layered"))
             self.bus_list.SetItem(idx, 2, f"{int(bus.get('volume', 1.0) * 100)}%")
             self.bus_list.SetItem(idx, 3, bus.get("hotkey", ""))
-            self.bus_list.SetItem(idx, 4, f"{bus.get('crossfade_ms', 500 if bus.get('mode') == 'exclusive' else 0)} ms")
-            self.bus_list.SetItem(idx, 5, f"{bus.get('track_crossfade_ms', 2000 if bus.get('mode') == 'exclusive' else 0)} ms")
+            self.bus_list.SetItem(idx, 4, f"{project_manager.bus_setting(bus, 'crossfade_ms')} ms")
+            self.bus_list.SetItem(idx, 5, f"{project_manager.bus_setting(bus, 'track_crossfade_ms')} ms")
             
             duck_factor = bus.get("duck_factor", 1.0)
-            duckable = bus.get("duckable", False)
+            duckable = project_manager.bus_setting(bus, "duckable")
             duck_parts = []
             if duck_factor < 1.0:
                 duck_parts.append(f"Ducks ({int(duck_factor * 100)}%)")
@@ -1150,14 +1147,7 @@ class ManageBusesDialog(wx.Dialog):
             duck_str = " / ".join(duck_parts) if duck_parts else "Off"
             self.bus_list.SetItem(idx, 6, duck_str)
 
-            action_map = {
-                "loop_shuffle": "Loop (Shuffle)",
-                "loop_sequential": "Loop (Sequential)",
-                "single_shuffle": "Single (Shuffle)",
-                "single_sequential": "Single (Sequential)"
-            }
-            action_code = bus.get("hotkey_action", "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle")
-            action_str = action_map.get(action_code, "Single (Shuffle)")
+            action_str = dict(HOTKEY_ACTIONS).get(project_manager.bus_setting(bus, "hotkey_action"), "Single (Shuffle)")
             self.bus_list.SetItem(idx, 7, action_str)
             # Associate bus dict to index
             self.bus_list.SetItemData(idx, idx)

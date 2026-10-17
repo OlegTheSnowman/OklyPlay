@@ -401,6 +401,22 @@ class TestUIDialogs(unittest.TestCase):
             shutil.rmtree(src_dir)
 
 
+    def test_new_bus_dialog_shows_defaults_for_its_mode(self):
+        # Add Bus preselects layered; it used to show exclusive crossfades (500, 2000).
+        dlg = ui_dialogs.AddEditBusDialog(None, bus_data=None)
+        dlg.name_txt.SetValue("Stingers")
+        data = dlg.GetBusData()
+        for key in ("crossfade_ms", "track_crossfade_ms", "hotkey_action", "duckable"):
+            self.assertEqual(data[key], project_manager.BUS_MODE_DEFAULTS["layered"][key], key)
+        dlg.mode_choice.SetStringSelection("exclusive")
+        dlg.OnModeChanged(None)
+        data = dlg.GetBusData()
+        dlg.Destroy()
+        self.assertEqual(data["mode"], "exclusive")
+        for key in ("crossfade_ms", "track_crossfade_ms", "hotkey_action", "duckable"):
+            self.assertEqual(data[key], project_manager.BUS_MODE_DEFAULTS["exclusive"][key], key)
+
+
 class TestMainFrame(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

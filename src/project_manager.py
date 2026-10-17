@@ -16,6 +16,20 @@ DEFAULT_SCENARIO = {
     "loop": False,
 }
 
+# Per-mode bus settings: what a new bus of that mode starts with, and what
+# fills in when an older project file lacks the key.
+BUS_MODE_DEFAULTS = {
+    "exclusive": {"crossfade_ms": 500, "hotkey_action": "loop_shuffle", "track_crossfade_ms": 2000,
+                  "duck_factor": 1.0, "duckable": True},
+    "layered":   {"crossfade_ms": 0, "hotkey_action": "single_shuffle", "track_crossfade_ms": 0,
+                  "duck_factor": 1.0, "duckable": False},
+}
+
+def bus_setting(bus, key):
+    """A bus setting, falling back to the default for the bus's mode (layered if unknown)."""
+    defaults = BUS_MODE_DEFAULTS.get(bus.get("mode"), BUS_MODE_DEFAULTS["layered"])
+    return bus.get(key, defaults[key])
+
 def create_project(path, name):
     """Creates a new project directory with default buses and config file."""
     os.makedirs(path, exist_ok=True)
@@ -31,28 +45,10 @@ def create_project(path, name):
         "master_volume": 0.8,
         "output_device": None,
         "buses": [
-            {
-                "id": music_bus_id,
-                "name": "Music",
-                "mode": "exclusive",
-                "volume": 0.7,
-                "crossfade_ms": 500,
-                "hotkey_action": "loop_shuffle",
-                "track_crossfade_ms": 2000,
-                "duck_factor": 1.0,
-                "duckable": True
-            },
-            {
-                "id": sfx_bus_id,
-                "name": "SFX",
-                "mode": "layered",
-                "volume": 1.0,
-                "crossfade_ms": 0,
-                "hotkey_action": "single_shuffle",
-                "track_crossfade_ms": 0,
-                "duck_factor": 1.0,
-                "duckable": False
-            }
+            dict(id=music_bus_id, name="Music", mode="exclusive", volume=0.7,
+                 **BUS_MODE_DEFAULTS["exclusive"]),
+            dict(id=sfx_bus_id, name="SFX", mode="layered", volume=1.0,
+                 **BUS_MODE_DEFAULTS["layered"]),
         ],
         "sounds": []
     }
@@ -73,17 +69,8 @@ def load_project(path):
     if "buses" not in data:
         data["buses"] = []
     for bus in data["buses"]:
-        if "crossfade_ms" not in bus:
-            # Default to 500 ms for exclusive buses, 0 ms for layered buses, or just 500 ms overall
-            bus["crossfade_ms"] = 500 if bus.get("mode") == "exclusive" else 0
-        if "hotkey_action" not in bus:
-            bus["hotkey_action"] = "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle"
-        if "track_crossfade_ms" not in bus:
-            bus["track_crossfade_ms"] = 2000 if bus.get("mode") == "exclusive" else 0
-        if "duck_factor" not in bus:
-            bus["duck_factor"] = 1.0
-        if "duckable" not in bus:
-            bus["duckable"] = True if bus.get("mode") == "exclusive" else False
+        for key in BUS_MODE_DEFAULTS["layered"]:
+            bus[key] = bus_setting(bus, key)
     if "sounds" not in data:
         data["sounds"] = []
     if "master_volume" not in data:

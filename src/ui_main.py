@@ -994,7 +994,7 @@ class MainFrame(wx.Frame):
         for b in self.project_data["buses"]:
             if b["id"] == bus_id:
                 bus_mode = b["mode"]
-                crossfade_ms = b.get("crossfade_ms", 500 if bus_mode == "exclusive" else 0)
+                crossfade_ms = project_manager.bus_setting(b, "crossfade_ms")
                 break
                 
         exclusive_bus_ids = {b["id"] for b in self.project_data["buses"] if b.get("mode") == "exclusive"}
@@ -1109,8 +1109,8 @@ class MainFrame(wx.Frame):
         if not bus:
             return
             
-        action = bus.get("hotkey_action", "loop_shuffle" if bus.get("mode") == "exclusive" else "single_shuffle")
-        track_crossfade_ms = bus.get("track_crossfade_ms", 0)
+        action = project_manager.bus_setting(bus, "hotkey_action")
+        track_crossfade_ms = project_manager.bus_setting(bus, "track_crossfade_ms")
         
         playlist = self.active_bus_playlists.get(bus_id)
         if playlist and playlist["active"]:
@@ -1193,7 +1193,7 @@ class MainFrame(wx.Frame):
             
         mode = playlist.get("mode", "loop_shuffle")
         bus = self.GetBusById(bus_id)
-        track_crossfade_ms = bus.get("track_crossfade_ms", 0) if bus else 0
+        track_crossfade_ms = project_manager.bus_setting(bus, "track_crossfade_ms") if bus else 0
         
         if mode == "loop_shuffle":
             shuffled_sounds = playlist["shuffled_sounds"]
