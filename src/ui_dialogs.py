@@ -22,6 +22,24 @@ def create_dialog_buttons(panel, ok_label="OK", cancel_label="Cancel"):
     return btn_sizer, ok_btn, cancel_btn
 
 
+def warn_hotkey_conflict(sounds, buses, hotkey, exclude_id=None):
+    """If hotkey is already bound to a sound or bus other than exclude_id, say so
+    in a message box and return True. Hotkeys compare case-insensitively."""
+    key = hotkey.strip().lower()
+    if not key:
+        return False
+    owners = [("sound", s) for s in sounds] + [("bus", b) for b in buses]
+    for kind, item in owners:
+        if item.get("id") != exclude_id and item.get("hotkey", "").strip().lower() == key:
+            wx.MessageBox(
+                f"The hotkey '{hotkey}' is already assigned to the {kind} '{item['name']}'.\n"
+                "Please choose a different hotkey.",
+                "Hotkey Conflict", wx.OK | wx.ICON_WARNING
+            )
+            return True
+    return False
+
+
 class _HIGHCONTRAST(ctypes.Structure):
     _fields_ = [("cbSize", ctypes.c_uint), ("dwFlags", ctypes.c_uint), ("lpszDefaultScheme", ctypes.c_wchar_p)]
 
@@ -903,18 +921,10 @@ class AddEditSoundDialog(wx.Dialog):
             self.file_txt.SetFocus()
             return
             
-        if hotkey and self.existing_sounds:
-            my_id = self.sound_data.get("id") if self.sound_data else None
-            for s in self.existing_sounds:
-                if s.get("id") != my_id and s.get("hotkey", "").strip().lower() == hotkey.lower():
-                    wx.MessageBox(
-                        f"The hotkey '{hotkey}' is already assigned to the sound '{s['name']}'.\n"
-                        "Please choose a different hotkey.",
-                        "Hotkey Conflict",
-                        wx.OK | wx.ICON_ERROR
-                    )
-                    self.hotkey_txt.SetFocus()
-                    return
+        my_id = self.sound_data.get("id") if self.sound_data else None
+        if warn_hotkey_conflict(self.existing_sounds or [], self.buses, hotkey, my_id):
+            self.hotkey_txt.SetFocus()
+            return
             
         event.Skip()
 
@@ -1097,37 +1107,16 @@ class AddEditBusDialog(wx.Dialog):
             return
             
         hotkey = self.hotkey_txt.GetValue().strip()
-        if hotkey:
-            # Locate parent window to query project data for verification
-            parent_dlg = self.Parent
-            while parent_dlg and not hasattr(parent_dlg, "project_data"):
-                parent_dlg = parent_dlg.Parent
-                
-            if parent_dlg and hasattr(parent_dlg, "project_data"):
-                project_data = parent_dlg.project_data
-                my_id = self.bus_data.get("id") if self.bus_data else None
-                
-                # Check other buses
-                for b in project_data.get("buses", []):
-                    if b.get("id") != my_id and b.get("hotkey", "").strip().lower() == hotkey.lower():
-                        wx.MessageBox(
-                            f"The hotkey '{hotkey}' is already assigned to the bus '{b['name']}'.\n"
-                            "Please choose a different hotkey.",
-                            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
-                        )
-                        self.hotkey_txt.SetFocus()
-                        return
-                
-                # Check sounds
-                for s in project_data.get("sounds", []):
-                    if s.get("hotkey", "").strip().lower() == hotkey.lower():
-                        wx.MessageBox(
-                            f"The hotkey '{hotkey}' is already assigned to the sound '{s['name']}'.\n"
-                            "Please choose a different hotkey.",
-                            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
-                        )
-                        self.hotkey_txt.SetFocus()
-                        return
+        # Locate parent window to query project data for verification
+        parent_dlg = self.Parent
+        while parent_dlg and not hasattr(parent_dlg, "project_data"):
+            parent_dlg = parent_dlg.Parent
+        if parent_dlg:
+            project_data = parent_dlg.project_data
+            my_id = self.bus_data.get("id") if self.bus_data else None
+            if warn_hotkey_conflict(project_data.get("sounds", []), project_data.get("buses", []), hotkey, my_id):
+                self.hotkey_txt.SetFocus()
+                return
         event.Skip()
  
     def OnDuckTriggerChanged(self, event):

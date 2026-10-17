@@ -804,29 +804,8 @@ class MainFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             new_hotkey = dlg.GetValue()
             
-            # Check for conflict
-            conflict = False
-            if new_hotkey:
-                # Check other sounds
-                for s in self.project_data["sounds"]:
-                    if s["id"] != sound["id"] and s.get("hotkey", "").strip().lower() == new_hotkey.lower():
-                        wx.MessageBox(
-                            f"The hotkey '{new_hotkey}' is already assigned to the sound '{s['name']}'.",
-                            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
-                        )
-                        conflict = True
-                        break
-                # Check buses
-                if not conflict:
-                    for b in self.project_data["buses"]:
-                        if b.get("hotkey", "").strip().lower() == new_hotkey.lower():
-                            wx.MessageBox(
-                                f"The hotkey '{new_hotkey}' is already assigned to the bus '{b['name']}'.",
-                                "Hotkey Conflict", wx.OK | wx.ICON_WARNING
-                            )
-                            conflict = True
-                            break
-            if not conflict:
+            if not ui_dialogs.warn_hotkey_conflict(
+                    self.project_data["sounds"], self.project_data["buses"], new_hotkey, sound["id"]):
                 sound["hotkey"] = new_hotkey
                 project_manager.save_project(self.project_dir, self.project_data)
                 self.RefreshSoundsList()

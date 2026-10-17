@@ -356,6 +356,29 @@ class TestUIDialogs(unittest.TestCase):
             "speed": 0.8, "pitch_semitones": -3.0, "loop": True})
 
 
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_edit_sound_rejects_hotkey_owned_by_bus(self, mock_msg):
+        buses = [{"id": "bus-1", "name": "Music", "hotkey": "F9"}]
+        sounds = [{"id": "s1", "name": "Horn", "hotkey": "F1"}]
+        dlg = ui_dialogs.AddEditSoundDialog(None, buses, existing_sounds=sounds)
+        dlg.name_txt.SetValue("New")
+        dlg.file_txt.SetValue("new.wav")
+        dlg.hotkey_txt.SetValue("f9")
+        event = MagicMock()
+        dlg.OnOK(event)
+        dlg.Destroy()
+        event.Skip.assert_not_called()
+        self.assertIn("the bus 'Music'", mock_msg.call_args[0][0])
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_hotkey_conflict_ignores_own_binding_and_blank(self, mock_msg):
+        sounds = [{"id": "s1", "name": "Horn", "hotkey": "F1"}]
+        self.assertFalse(ui_dialogs.warn_hotkey_conflict(sounds, [], "F1", exclude_id="s1"))
+        self.assertFalse(ui_dialogs.warn_hotkey_conflict(sounds, [], "", exclude_id=None))
+        self.assertTrue(ui_dialogs.warn_hotkey_conflict(sounds, [], "f1", exclude_id="s2"))
+        self.assertEqual(mock_msg.call_count, 1)
+
+
 class TestMainFrame(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
