@@ -506,6 +506,17 @@ class TestMainFrame(unittest.TestCase):
         frame.Destroy()
 
     @patch('wx.MessageBox', return_value=wx.OK)
+    def test_volume_announcement_is_not_truncated(self, mock_msgbox):
+        # 1.0 - 0.05 is 0.9499999..., which int() used to announce as 94.
+        frame = ui_main.MainFrame(None)
+        frame.LoadProject(self.proj_path)
+        frame.GetSelectedBus()["volume"] = 1.0
+        frame.OnBusVolDown(None)
+        frame.OnBusVolDown(None)
+        self.mock_speak.assert_called_with("Volume 90 percent")
+        frame.Destroy()
+
+    @patch('wx.MessageBox', return_value=wx.OK)
     def test_bus_switching(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)

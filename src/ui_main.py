@@ -319,12 +319,8 @@ class MainFrame(wx.Frame):
             self.project_dir = path
             
             # Setup volumes in audio engine
-            self.audio_engine.clear_buses_config()
             self.audio_engine.set_master_volume(self.project_data.get("master_volume", 0.8))
-            for bus in self.project_data.get("buses", []):
-                self.audio_engine.set_bus_volume(bus["id"], bus.get("volume", 1.0))
-                self.audio_engine.set_bus_duck_factor(bus["id"], bus.get("duck_factor", 1.0))
-                self.audio_engine.set_bus_duckable(bus["id"], bus.get("duckable", False))
+            self.ApplyBusSettings()
                 
             # Set audio device if saved
             device_index = self.project_data.get("output_device")
@@ -369,6 +365,14 @@ class MainFrame(wx.Frame):
                 self.settings["last_project_path"] = None
             self.SaveSettings()
             wx.CallAfter(self.OnManageProjects, None)
+
+    def ApplyBusSettings(self):
+        """Push every bus's volume and ducking settings to the audio engine."""
+        self.audio_engine.clear_buses_config()
+        for bus in self.project_data.get("buses", []):
+            self.audio_engine.set_bus_volume(bus["id"], bus.get("volume", 1.0))
+            self.audio_engine.set_bus_duck_factor(bus["id"], bus.get("duck_factor", 1.0))
+            self.audio_engine.set_bus_duckable(bus["id"], bus.get("duckable", False))
 
     def RefreshBusesList(self):
         self.buses_list.Clear()
@@ -524,12 +528,17 @@ class MainFrame(wx.Frame):
         return None
 
     def GetSelectedBus(self):
-        if not self.project_data or not self.selected_bus_id:
+        return self.GetBusById(self.selected_bus_id)
+
+    def GetSelectedSound(self, none_message=None):
+        """The sound selected in the sounds list, or None. If nothing is selected
+        and none_message is given, it is spoken so the user knows why nothing happened."""
+        sel = self.sounds_list.GetFirstSelected()
+        if sel == wx.NOT_FOUND:
+            if none_message:
+                Speech.speak(none_message)
             return None
-        for b in self.project_data["buses"]:
-            if b["id"] == self.selected_bus_id:
-                return b
-        return None
+        return self.current_bus_sounds[self.sounds_list.GetItemData(sel)]
 
     @staticmethod
     def _SetIfChanged(setter, getter, value):
@@ -744,13 +753,9 @@ class MainFrame(wx.Frame):
         if not self.project_data:
             return
             
-        sel = self.sounds_list.GetFirstSelected()
-        if sel == wx.NOT_FOUND:
-            Speech.speak("No sound selected to edit")
+        sound = self.GetSelectedSound("No sound selected to edit")
+        if sound is None:
             return
-            
-        sound_idx = self.sounds_list.GetItemData(sel)
-        sound = self.current_bus_sounds[sound_idx]
         
         # Find index in global sounds list
         global_sound_idx = self.project_data["sounds"].index(sound)
@@ -792,13 +797,9 @@ class MainFrame(wx.Frame):
         if not self.project_data:
             return
             
-        sel = self.sounds_list.GetFirstSelected()
-        if sel == wx.NOT_FOUND:
-            Speech.speak("No sound selected to set hotkey")
+        sound = self.GetSelectedSound("No sound selected to set hotkey")
+        if sound is None:
             return
-            
-        sound_idx = self.sounds_list.GetItemData(sel)
-        sound = self.current_bus_sounds[sound_idx]
         
         dlg = ui_dialogs.QuickHotkeyDialog(self, sound["name"], sound.get("hotkey", ""))
         if dlg.ShowModal() == wx.ID_OK:
@@ -817,13 +818,9 @@ class MainFrame(wx.Frame):
         if not self.project_data:
             return
             
-        sel = self.sounds_list.GetFirstSelected()
-        if sel == wx.NOT_FOUND:
-            Speech.speak("No sound selected to remove")
+        sound = self.GetSelectedSound("No sound selected to remove")
+        if sound is None:
             return
-            
-        sound_idx = self.sounds_list.GetItemData(sel)
-        sound = self.current_bus_sounds[sound_idx]
         
         confirm = wx.MessageBox(
             f"Are you sure you want to remove the sound '{sound['name']}'?",
@@ -843,13 +840,9 @@ class MainFrame(wx.Frame):
         if not self.project_data:
             return
             
-        sel = self.sounds_list.GetFirstSelected()
-        if sel == wx.NOT_FOUND:
-            Speech.speak("No sound selected to edit scenarios")
+        sound = self.GetSelectedSound("No sound selected to edit scenarios")
+        if sound is None:
             return
-            
-        sound_idx = self.sounds_list.GetItemData(sel)
-        sound = self.current_bus_sounds[sound_idx]
         
         dlg = ui_dialogs.EditScenariosDialog(self, self.project_data["buses"], sound)
         dlg.ShowModal()
@@ -871,12 +864,7 @@ class MainFrame(wx.Frame):
         # Save changes
         project_manager.save_project(self.project_dir, self.project_data)
         
-        # Update audio engine bus volumes and ducking settings
-        self.audio_engine.clear_buses_config()
-        for bus in self.project_data["buses"]:
-            self.audio_engine.set_bus_volume(bus["id"], bus.get("volume", 1.0))
-            self.audio_engine.set_bus_duck_factor(bus["id"], bus.get("duck_factor", 1.0))
-            self.audio_engine.set_bus_duckable(bus["id"], bus.get("duckable", False))
+        self.ApplyBusSettings()
             
         # Verify selected bus still exists
         bus_ids = [b["id"] for b in self.project_data["buses"]]
@@ -949,25 +937,18 @@ class MainFrame(wx.Frame):
             event.Skip()
 
     def PlaySelectedSound(self):
-        sel = self.sounds_list.GetFirstSelected()
-        if sel == wx.NOT_FOUND:
+        sound = self.GetSelectedSound()
+        if sound is None:
             return
-            
-        sound_idx = self.sounds_list.GetItemData(sel)
-        sound = self.current_bus_sounds[sound_idx]
         
         # Play using default scenario settings
         self.PlaySound(sound, sound["default_scenario"])
 
     def OnPlayScenarioHotkey(self, event):
         """Triggered via Alt+1..9. Plays selected sound with the specific scenario override."""
-        sel = self.sounds_list.GetFirstSelected()
-        if sel == wx.NOT_FOUND:
-            Speech.speak("No sound selected")
+        sound = self.GetSelectedSound("No sound selected")
+        if sound is None:
             return
-            
-        sound_idx = self.sounds_list.GetItemData(sel)
-        sound = self.current_bus_sounds[sound_idx]
         
         scenario_idx = event.GetId() - ID_SCENARIO_BASE - 1
         scenarios = sound.get("scenarios", [])
@@ -1037,42 +1018,37 @@ class MainFrame(wx.Frame):
 
     # --- Volume Adjustment Handlers ---
     def OnBusVolUp(self, event):
-        bus = self.GetSelectedBus()
-        if bus:
-            new_vol = min(1.0, bus.get("volume", 1.0) + 0.05)
-            bus["volume"] = new_vol
-            self.audio_engine.set_bus_volume(bus["id"], new_vol)
-            project_manager.save_project(self.project_dir, self.project_data)
-            self.UpdateStatusBar()
-            Speech.speak(f"Volume {int(new_vol * 100)} percent")
+        self.StepVolume(+0.05, master=False)
 
     def OnBusVolDown(self, event):
-        bus = self.GetSelectedBus()
-        if bus:
-            new_vol = max(0.0, bus.get("volume", 1.0) - 0.05)
-            bus["volume"] = new_vol
-            self.audio_engine.set_bus_volume(bus["id"], new_vol)
-            project_manager.save_project(self.project_dir, self.project_data)
-            self.UpdateStatusBar()
-            Speech.speak(f"Volume {int(new_vol * 100)} percent")
+        self.StepVolume(-0.05, master=False)
 
     def OnMasterVolUp(self, event):
-        if self.project_data:
-            new_vol = min(1.0, self.project_data.get("master_volume", 0.8) + 0.05)
-            self.project_data["master_volume"] = new_vol
-            self.audio_engine.set_master_volume(new_vol)
-            project_manager.save_project(self.project_dir, self.project_data)
-            self.UpdateStatusBar()
-            Speech.speak(f"Master volume {int(new_vol * 100)} percent")
+        self.StepVolume(+0.05, master=True)
 
     def OnMasterVolDown(self, event):
-        if self.project_data:
-            new_vol = max(0.0, self.project_data.get("master_volume", 0.8) - 0.05)
+        self.StepVolume(-0.05, master=True)
+
+    def StepVolume(self, delta, master):
+        """Nudge the selected bus or the master volume, clamp to 0..1, apply, save and announce."""
+        if master:
+            if not self.project_data:
+                return
+            new_vol = max(0.0, min(1.0, self.project_data.get("master_volume", 0.8) + delta))
             self.project_data["master_volume"] = new_vol
             self.audio_engine.set_master_volume(new_vol)
-            project_manager.save_project(self.project_dir, self.project_data)
-            self.UpdateStatusBar()
-            Speech.speak(f"Master volume {int(new_vol * 100)} percent")
+            label = "Master volume"
+        else:
+            bus = self.GetSelectedBus()
+            if not bus:
+                return
+            new_vol = max(0.0, min(1.0, bus.get("volume", 1.0) + delta))
+            bus["volume"] = new_vol
+            self.audio_engine.set_bus_volume(bus["id"], new_vol)
+            label = "Volume"
+        project_manager.save_project(self.project_dir, self.project_data)
+        self.UpdateStatusBar()
+        Speech.speak(f"{label} {int(round(new_vol * 100))} percent")
 
     def OnCleanupTimer(self, event):
         """Runs regularly to clean up done streams and keep active stream counts updated in the status bar."""
