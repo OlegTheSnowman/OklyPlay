@@ -329,6 +329,33 @@ class TestUIDialogs(unittest.TestCase):
         dlg8.Destroy()
 
 
+    @patch('wx.MessageBox', return_value=wx.YES)
+    def test_delete_project_reports_no_error(self, mock_msg):
+        # Deleting announces through Speech; a missing import used to turn a
+        # successful delete into a "Failed to delete directory" error box.
+        proj_dir = tempfile.mkdtemp()
+        dlg = ui_dialogs.ProjectManagerDialog(None, [{"name": "Doomed", "path": proj_dir}])
+        with patch('accessible_speech.Speech.speak') as mock_speak:
+            dlg.OnDelete(None)
+        dlg.Destroy()
+        self.assertFalse(os.path.exists(proj_dir))
+        self.assertEqual(mock_msg.call_count, 1)  # only the confirmation
+        mock_speak.assert_called_once_with("Deleted project Doomed")
+
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_set_scenario_as_default_keeps_all_settings(self, mock_msg):
+        scen = {"name": "Low", "volume": 0.5, "fade_in_ms": 10, "fade_out_ms": 20,
+                "speed": 0.8, "pitch_semitones": -3.0, "loop": True, "bus_id": None}
+        sound = {"id": "s1", "name": "Horn", "default_scenario": {}, "scenarios": [scen]}
+        dlg = ui_dialogs.EditScenariosDialog(None, [], sound)
+        dlg.scen_list.Select(0)
+        dlg.OnSetAsDefault(None)
+        dlg.Destroy()
+        self.assertEqual(sound["default_scenario"], {
+            "volume": 0.5, "fade_in_ms": 10, "fade_out_ms": 20,
+            "speed": 0.8, "pitch_semitones": -3.0, "loop": True})
+
+
 class TestMainFrame(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

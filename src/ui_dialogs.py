@@ -3,6 +3,7 @@ import os
 import uuid
 
 import ctypes
+from accessible_speech import Speech
 
 # Spacing used by every window, so dialogs line up with each other.
 PAD = 12
@@ -1579,13 +1580,9 @@ class EditScenariosDialog(wx.Dialog):
         scen_idx = self.scen_list.GetItemData(sel)
         scen = self.sound_data["scenarios"][scen_idx]
         
-        # Set settings in default_scenario
+        # Copy every playback setting; name and bus override are not playback settings
         self.sound_data["default_scenario"] = {
-            "volume": scen["volume"],
-            "fade_in_ms": scen["fade_in_ms"],
-            "fade_out_ms": scen["fade_out_ms"],
-            "speed": scen["speed"],
-            "loop": scen["loop"]
+            k: v for k, v in scen.items() if k not in ("name", "bus_id")
         }
         
         # Override sound's bus if scenario overrides it
