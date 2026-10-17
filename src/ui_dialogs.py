@@ -1,9 +1,10 @@
 import wx
 import os
-import uuid
-
 import ctypes
+import shutil
+import uuid
 from accessible_speech import Speech
+import project_manager
 
 # Spacing used by every window, so dialogs line up with each other.
 PAD = 12
@@ -413,9 +414,6 @@ class SoundManagerDialog(wx.Dialog):
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.project_data = project_data
         self.project_dir = project_dir
-        # Keep a working copy of sounds so we can cancel changes
-        import copy
-        self._original_sounds = copy.deepcopy(project_data.get("sounds", []))
 
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -585,59 +583,39 @@ class SoundManagerDialog(wx.Dialog):
 
         paths = dlg.GetPaths()
         dlg.Destroy()
+        self._import_files(paths, "Imported", "Import Complete")
 
-        sounds_dir = os.path.join(self.project_dir, "sounds")
-        os.makedirs(sounds_dir, exist_ok=True)
+    def _import_files(self, paths, verb, title):
+        """Copy each file into the project as a new, unassigned sound, then report
+        the count. Shared by the file picker (Ctrl+I) and clipboard paste (Ctrl+V)."""
         imported = 0
-        skipped  = 0
-
+        skipped = 0
         for src in paths:
-            basename = os.path.basename(src)
-            name_no_ext = os.path.splitext(basename)[0]
-
-            # Copy file, avoiding name collision
-            target = basename
-            counter = 1
-            while os.path.exists(os.path.join(sounds_dir, target)):
-                base, ext = os.path.splitext(basename)
-                target = f"{base}_{counter}{ext}"
-                counter += 1
-
             try:
-                import shutil
-                shutil.copy2(src, os.path.join(sounds_dir, target))
-            except Exception as e:
+                filename = project_manager.import_sound(self.project_dir, src)
+            except Exception:
                 skipped += 1
                 continue
-
-            new_sound = {
+            self.project_data["sounds"].append({
                 "id":       str(uuid.uuid4()),
-                "name":     name_no_ext,
-                "filename": target,
+                "name":     os.path.splitext(os.path.basename(src))[0],
+                "filename": filename,
                 "bus_id":   "",           # intentionally unassigned
                 "hotkey":   "",
-                "default_scenario": {
-                    "volume":          1.0,
-                    "fade_in_ms":      0,
-                    "fade_out_ms":     0,
-                    "speed":           1.0,
-                    "pitch_semitones": 0.0,
-                    "loop":            False,
-                },
+                "default_scenario": dict(project_manager.DEFAULT_SCENARIO),
                 "scenarios": [],
                 "missing":   False,
-            }
-            self.project_data["sounds"].append(new_sound)
+            })
             imported += 1
 
         self._PopulateList()
-        msg = f"Imported {imported} sound(s)."
+        msg = f"{verb} {imported} sound(s)."
         if skipped:
             msg += f" {skipped} file(s) could not be copied."
-        wx.MessageBox(msg, "Import Complete", wx.OK | wx.ICON_INFORMATION)
+        wx.MessageBox(msg, title, wx.OK | wx.ICON_INFORMATION)
 
     def _paste_from_clipboard(self):
-        """Import audio files that were copied to the clipboard from Windows Explorer (Ctrl+C → Ctrl+V)."""
+        """Import audio files that were copied to the clipboard from Windows Explorer (Ctrl+C, then Ctrl+V)."""
         AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".aiff"}
 
         # Read file paths from the clipboard
@@ -673,54 +651,7 @@ class SoundManagerDialog(wx.Dialog):
             )
             return
 
-        sounds_dir = os.path.join(self.project_dir, "sounds")
-        os.makedirs(sounds_dir, exist_ok=True)
-        imported = 0
-        skipped  = 0
-
-        for src in audio_paths:
-            basename    = os.path.basename(src)
-            name_no_ext = os.path.splitext(basename)[0]
-
-            # Avoid collisions in the sounds/ folder
-            target  = basename
-            counter = 1
-            while os.path.exists(os.path.join(sounds_dir, target)):
-                base, ext = os.path.splitext(basename)
-                target = f"{base}_{counter}{ext}"
-                counter += 1
-
-            try:
-                import shutil
-                shutil.copy2(src, os.path.join(sounds_dir, target))
-            except Exception:
-                skipped += 1
-                continue
-
-            self.project_data["sounds"].append({
-                "id":       str(uuid.uuid4()),
-                "name":     name_no_ext,
-                "filename": target,
-                "bus_id":   "",
-                "hotkey":   "",
-                "default_scenario": {
-                    "volume":          1.0,
-                    "fade_in_ms":      0,
-                    "fade_out_ms":     0,
-                    "speed":           1.0,
-                    "pitch_semitones": 0.0,
-                    "loop":            False,
-                },
-                "scenarios": [],
-                "missing":   False,
-            })
-            imported += 1
-
-        self._PopulateList()
-        msg = f"Pasted {imported} sound(s)."
-        if skipped:
-            msg += f" {skipped} file(s) could not be copied."
-        wx.MessageBox(msg, "Paste Complete", wx.OK | wx.ICON_INFORMATION)
+        self._import_files(audio_paths, "Pasted", "Paste Complete")
 
     def OnEdit(self, event):
         """Open AddEditSoundDialog for the selected sound."""
@@ -742,17 +673,7 @@ class SoundManagerDialog(wx.Dialog):
             new_full = updated.pop("filepath_full", "")
             # If user picked a new file, copy it in
             if new_full and new_full != full_path and os.path.exists(new_full):
-                import shutil
-                new_rel = os.path.basename(new_full)
-                dest = os.path.join(sounds_dir, new_rel)
-                counter = 1
-                while os.path.exists(dest) and dest != os.path.join(sounds_dir, sound["filename"]):
-                    base, ext = os.path.splitext(new_rel)
-                    new_rel = f"{base}_{counter}{ext}"
-                    dest = os.path.join(sounds_dir, new_rel)
-                    counter += 1
-                shutil.copy2(new_full, dest)
-                updated["filename"] = new_rel
+                updated["filename"] = project_manager.import_sound(self.project_dir, new_full)
             else:
                 updated["filename"] = sound["filename"]
 
@@ -1697,7 +1618,6 @@ class ProjectManagerDialog(wx.Dialog):
         )
         if confirm == wx.YES:
             try:
-                import shutil
                 shutil.rmtree(proj["path"], ignore_errors=True)
                 self.recent_projects.pop(idx)
                 self.PopulateList()

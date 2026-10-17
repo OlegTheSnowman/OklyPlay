@@ -2,7 +2,7 @@ import logging
 import wx
 import os
 import json
-import shutil
+import random
 from accessible_speech import Speech
 from audio_engine import AudioEngine
 import project_manager
@@ -1153,7 +1153,6 @@ class MainFrame(wx.Frame):
         self.audio_engine.stop_bus(bus_id)
         
         if action == "single_shuffle":
-            import random
             sound = random.choice(sounds)
             ch = self.PlaySound(sound, sound["default_scenario"])
             if ch:
@@ -1174,7 +1173,6 @@ class MainFrame(wx.Frame):
                 Speech.speak(f"Failed to play sound {sound['name']} on bus {bus['name']}.")
                 
         elif action == "loop_shuffle":
-            import random
             shuffled_sounds = list(sounds)
             random.shuffle(shuffled_sounds)
             sound = shuffled_sounds[0]
@@ -1225,7 +1223,6 @@ class MainFrame(wx.Frame):
             shuffled_sounds = playlist["shuffled_sounds"]
             idx = playlist["index"] + 1
             if idx >= len(shuffled_sounds):
-                import random
                 random.shuffle(shuffled_sounds)
                 idx = 0
             playlist["index"] = idx

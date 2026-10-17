@@ -379,6 +379,28 @@ class TestUIDialogs(unittest.TestCase):
         self.assertEqual(mock_msg.call_count, 1)
 
 
+    @patch('wx.MessageBox', return_value=wx.OK)
+    def test_sound_manager_import_copies_without_clobbering(self, mock_msg):
+        proj = tempfile.mkdtemp()
+        src_dir = tempfile.mkdtemp()
+        try:
+            project_manager.create_project(proj, "P")
+            data = project_manager.load_project(proj)
+            src = os.path.join(src_dir, "horn.wav")
+            sf.write(src, np.zeros((10, 2), dtype=np.float32), 44100)
+            dlg = ui_dialogs.SoundManagerDialog(None, data, proj)
+            dlg._import_files([src, src], "Imported", "Import Complete")
+            dlg.Destroy()
+            names = [s["filename"] for s in data["sounds"]]
+            self.assertEqual(names, ["horn.wav", "horn_1.wav"])
+            self.assertTrue(all(s["bus_id"] == "" for s in data["sounds"]))
+            self.assertEqual(data["sounds"][0]["default_scenario"], project_manager.DEFAULT_SCENARIO)
+            self.assertIn("Imported 2 sound(s).", mock_msg.call_args[0][0])
+        finally:
+            shutil.rmtree(proj)
+            shutil.rmtree(src_dir)
+
+
 class TestMainFrame(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -5,6 +5,17 @@ import zipfile
 import uuid
 from accessible_speech import Speech
 
+# Playback settings a sound starts with, and the values filled in for keys
+# missing from older project files.
+DEFAULT_SCENARIO = {
+    "volume": 1.0,
+    "fade_in_ms": 0,
+    "fade_out_ms": 0,
+    "speed": 1.0,
+    "pitch_semitones": 0.0,
+    "loop": False,
+}
+
 def create_project(path, name):
     """Creates a new project directory with default buses and config file."""
     os.makedirs(path, exist_ok=True)
@@ -85,12 +96,9 @@ def load_project(path):
         os.makedirs(sounds_dir, exist_ok=True)
         
     for sound in data["sounds"]:
-        ds = sound.setdefault("default_scenario", {})
-        if "pitch_semitones" not in ds:
-            ds["pitch_semitones"] = 0.0
-        for scen in sound.get("scenarios", []):
-            if "pitch_semitones" not in scen:
-                scen["pitch_semitones"] = 0.0
+        for scen in [sound.setdefault("default_scenario", {})] + sound.get("scenarios", []):
+            for key, value in DEFAULT_SCENARIO.items():
+                scen.setdefault(key, value)
 
     missing_count = 0
     for sound in data["sounds"]:
