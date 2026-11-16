@@ -1376,6 +1376,10 @@ class TestDeleteOnlyProjects(unittest.TestCase):
     def setUpClass(cls):
         cls.app = wx.App(False)
 
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
     @patch('ui_dialogs.message_box', return_value=wx.YES)
     def test_refuses_folder_without_project_json(self, mock_msg):
         folder = tempfile.mkdtemp()
@@ -1402,6 +1406,10 @@ class TestOutputDeviceByName(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
 
     def setUp(self):
         self.patchers = [patch('sounddevice.OutputStream'), patch('accessible_speech.Speech.speak'),
@@ -1477,6 +1485,10 @@ class TestWelcomeAndProjectManager(unittest.TestCase):
     def setUpClass(cls):
         cls.app = wx.App(False)
 
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
+
     def setUp(self):
         self.patchers = [patch('sounddevice.OutputStream'), patch('accessible_speech.Speech.speak'),
                          patch.object(ui_main.MainFrame, "LoadSettingsAndLastProject",
@@ -1532,6 +1544,10 @@ class TestMessageDialog(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = wx.App(False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.Destroy()
 
     def test_yes_no_dialog(self):
         msg = "Remove 'Air horn'?\nThis cannot be undone."
