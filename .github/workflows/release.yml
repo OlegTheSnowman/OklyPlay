@@ -29,7 +29,7 @@ jobs:
 
     - name: Build executable with PyInstaller
       run: |
-        python -m PyInstaller --onefile --windowed --paths src --collect-all accessible_output2 --name OklyPlay src/soundboard.py
+        python -m PyInstaller --onefile --windowed --paths src --collect-all accessible_output2 --icon assets/oklyplay.ico --name OklyPlay src/soundboard.py
 
     - name: Extract changelog for this release
       id: changelog
