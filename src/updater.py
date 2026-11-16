@@ -64,7 +64,8 @@ def fetch_latest():
     digest = (asset or {}).get("digest") or ""
     return {
         "version": data.get("tag_name", "").lstrip("v"),
-        "notes": (data.get("body") or "").strip(),
+        # Release notes are Markdown; drop heading marks so "### Fixed" reads as "Fixed"
+        "notes": re.sub(r"(?m)^#+\s*", "", data.get("body") or "").strip(),
         "page": data.get("html_url") or RELEASES_PAGE,
         "url": asset.get("browser_download_url") if asset else None,
         "size": asset.get("size") if asset else None,
