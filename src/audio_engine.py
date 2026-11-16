@@ -7,28 +7,79 @@ import sounddevice as sd
 logger = logging.getLogger(__name__)
 
 
+_PV_FFT = 2048
+_PV_HOP = 512
+_PV_BLOCK = 512  # output frames per block, keeps memory flat for long tracks
+
+
+def _time_stretch(x: np.ndarray, rate: float) -> np.ndarray:
+    """Phase vocoder: change the duration of mono signal x by 1/rate, keeping its pitch.
+
+    rate > 1 makes it shorter, rate < 1 longer. Works in blocks so a long music
+    track does not need its whole spectrogram in memory at once."""
+    n_fft, hop = _PV_FFT, _PV_HOP
+    win = np.hanning(n_fft).astype(np.float32)
+    padded = np.pad(x.astype(np.float32), (n_fft // 2, n_fft + n_fft // 2))
+    frames = np.lib.stride_tricks.sliding_window_view(padded, n_fft)[::hop]
+    n_in = len(frames) - 1  # keep one spare frame for interpolation
+    steps = np.arange(0.0, n_in, rate)
+    bins = n_fft // 2 + 1
+    advance = (2.0 * np.pi * hop * np.arange(bins) / n_fft).astype(np.float32)
+
+    out_len = len(steps) * hop + n_fft
+    out = np.zeros(out_len, dtype=np.float32)
+    norm = np.zeros(out_len, dtype=np.float32)
+    phase = None
+    for b0 in range(0, len(steps), _PV_BLOCK):
+        st = steps[b0:b0 + _PV_BLOCK]
+        idx = st.astype(np.int64)
+        lo, hi = idx[0], idx[-1] + 2
+        spec = np.fft.rfft(frames[lo:hi] * win, axis=1)
+        mags = np.abs(spec).astype(np.float32)
+        angs = np.angle(spec).astype(np.float32)
+        i0, i1 = idx - lo, idx - lo + 1
+        alpha = (st - idx)[:, None].astype(np.float32)
+        mag = (1.0 - alpha) * mags[i0] + alpha * mags[i1]
+        dphase = angs[i1] - angs[i0] - advance
+        dphase -= np.float32(2.0 * np.pi) * np.round(dphase / np.float32(2.0 * np.pi))
+        incr = advance + dphase
+        start = angs[i0[0]] if phase is None else phase
+        # Phase of frame k is the start phase plus the increments of frames before it
+        cum = np.cumsum(incr, axis=0)
+        phases = np.vstack((start[None, :], start + cum[:-1]))
+        phase = start + cum[-1]
+        blk = np.fft.irfft(mag * (np.cos(phases) + 1j * np.sin(phases)), n=n_fft, axis=1).astype(np.float32) * win
+        # Overlap-add. hop is n_fft / 4, so every 4th frame lines up end to end:
+        # four strided adds instead of one Python step per frame.
+        lap = n_fft // hop
+        for j in range(min(lap, len(blk))):
+            sub = blk[j::lap]
+            pos = (b0 + j) * hop
+            out[pos:pos + sub.size] += sub.reshape(-1)
+            norm[pos:pos + sub.size] += np.tile(win * win, len(sub))
+    out /= np.maximum(norm, 1e-3)
+    target = int(round(len(x) / rate))
+    return out[n_fft // 2:n_fft // 2 + target]
+
+
 def _pitch_shift(data: np.ndarray, semitones: float) -> np.ndarray:
-    """Shift pitch by semitones without changing duration using a double-resample technique."""
+    """Shift pitch by semitones without changing duration.
+
+    The sound is first stretched in time with a phase vocoder (pitch kept), then
+    resampled back to its original length, which moves every frequency by the
+    pitch factor."""
     if semitones == 0.0:
         return data
     N = len(data)
-    if N == 0:
+    if N < _PV_FFT:
         return data
-    pitch_factor = 2.0 ** (semitones / 12.0)
-    N_shifted = max(1, int(round(N / pitch_factor)))
-    t_in = np.arange(N, dtype=np.float64)
-    t_out = np.linspace(0.0, N - 1, N_shifted, dtype=np.float64)
-    shifted = np.column_stack((
-        np.atleast_1d(np.interp(t_out, t_in, data[:, 0])),
-        np.atleast_1d(np.interp(t_out, t_in, data[:, 1])),
-    ))
-    # Resample back to original length to restore duration
-    t_in2 = np.arange(N_shifted, dtype=np.float64)
-    t_out2 = np.linspace(0.0, N_shifted - 1, N, dtype=np.float64)
-    return np.column_stack((
-        np.atleast_1d(np.interp(t_out2, t_in2, shifted[:, 0])),
-        np.atleast_1d(np.interp(t_out2, t_in2, shifted[:, 1])),
-    )).astype(np.float32)
+    factor = 2.0 ** (semitones / 12.0)
+    channels = []
+    for c in range(data.shape[1]):
+        stretched = _time_stretch(data[:, c], 1.0 / factor)
+        t_out = np.linspace(0.0, len(stretched) - 1, N)
+        channels.append(np.interp(t_out, np.arange(len(stretched)), stretched))
+    return np.column_stack(channels).astype(np.float32)
 
 
 class LoadedSound:
