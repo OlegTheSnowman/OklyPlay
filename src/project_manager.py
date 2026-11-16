@@ -1,6 +1,7 @@
 import os
 import json
 import shutil
+import tempfile
 import zipfile
 import uuid
 from accessible_speech import Speech
@@ -154,13 +155,34 @@ def export_project(project_path, zip_path):
                     continue
                 zipf.write(full_path, rel_path)
 
+def is_project_dir(path):
+    """True if path is a folder holding an OklyPlay project.json."""
+    return os.path.isfile(os.path.join(path, "project.json"))
+
 def import_project(zip_path, target_dir):
-    """Unzips a project archive and verifies it contains a valid project.json."""
-    os.makedirs(target_dir, exist_ok=True)
-    with zipfile.ZipFile(zip_path, 'r') as zipf:
-        zipf.extractall(target_dir)
-        
-    json_path = os.path.join(target_dir, "project.json")
-    if not os.path.exists(json_path):
-        shutil.rmtree(target_dir, ignore_errors=True)
-        raise ValueError("Invalid project zip: project.json not found at root.")
+    """Unzips a project archive into target_dir, which must not exist yet or be empty.
+
+    project.json may sit at the root of the zip (OklyPlay's own export) or inside
+    one top-level folder (a folder zipped with Explorer's Send to). The archive is
+    unpacked into a scratch folder first, so a bad zip never touches existing files."""
+    if os.path.isdir(target_dir) and os.listdir(target_dir):
+        raise ValueError(f"The folder {target_dir} already exists and is not empty. "
+                         "Choose another destination.")
+    parent = os.path.dirname(os.path.abspath(target_dir))
+    os.makedirs(parent, exist_ok=True)
+    scratch = tempfile.mkdtemp(prefix=".oklyplay-import-", dir=parent)
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zipf:
+            zipf.extractall(scratch)
+        root = scratch
+        if not is_project_dir(root):
+            entries = [e for e in os.listdir(scratch) if not e.startswith("__MACOSX")]
+            if len(entries) == 1 and is_project_dir(os.path.join(scratch, entries[0])):
+                root = os.path.join(scratch, entries[0])
+            else:
+                raise ValueError("This zip is not an OklyPlay project: project.json was not found.")
+        if os.path.isdir(target_dir):
+            os.rmdir(target_dir)  # empty, checked above
+        shutil.move(root, target_dir)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)

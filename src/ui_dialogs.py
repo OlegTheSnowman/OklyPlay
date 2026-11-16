@@ -1599,7 +1599,17 @@ class ProjectManagerDialog(wx.Dialog):
             return
         idx = self.projects_list.GetItemData(sel)
         proj = self.recent_projects[idx]
-        
+
+        # Only ever delete a folder that really is an OklyPlay project, so a
+        # wrong or stale path in the list can never wipe some other folder.
+        if not project_manager.is_project_dir(proj["path"]):
+            wx.MessageBox(
+                f"The folder {proj['path']} does not contain an OklyPlay project, "
+                "so nothing was deleted. Use Remove from List to drop it from this list.",
+                "Not a Project Folder", wx.OK | wx.ICON_WARNING
+            )
+            return
+
         confirm = wx.MessageBox(
             f"Are you sure you want to delete all files for project '{proj['name']}'?\n"
             f"This will permanently delete the folder:\n{proj['path']}\n\nTHIS ACTION CANNOT BE UNDONE.",

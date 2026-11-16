@@ -334,6 +334,7 @@ class TestUIDialogs(unittest.TestCase):
         # Deleting announces through Speech; a missing import used to turn a
         # successful delete into a "Failed to delete directory" error box.
         proj_dir = tempfile.mkdtemp()
+        project_manager.create_project(proj_dir, "Doomed")
         dlg = ui_dialogs.ProjectManagerDialog(None, [{"name": "Doomed", "path": proj_dir}])
         with patch('accessible_speech.Speech.speak') as mock_speak:
             dlg.OnDelete(None)
@@ -718,8 +719,8 @@ class TestProjectManagerDialogActions(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.p1_path = os.path.join(self.temp_dir, "Proj1")
         self.p2_path = os.path.join(self.temp_dir, "Proj2")
-        os.makedirs(self.p1_path, exist_ok=True)
-        os.makedirs(self.p2_path, exist_ok=True)
+        project_manager.create_project(self.p1_path, "Proj1")
+        project_manager.create_project(self.p2_path, "Proj2")
         
         self.recent = [
             {"name": "Proj1", "path": self.p1_path},
