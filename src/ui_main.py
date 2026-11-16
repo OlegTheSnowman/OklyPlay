@@ -351,9 +351,9 @@ class MainFrame(wx.Frame):
             self.audio_engine.set_master_volume(self.project_data.get("master_volume", 0.8))
             self.ApplyBusSettings()
                 
-            # Set audio device if saved
-            device_index = self.project_data.get("output_device")
-            if device_index is not None:
+            # Restore the saved output device, or go back to the system default
+            device_index = self.ResolveOutputDevice(self.project_data)
+            if device_index != self.audio_engine._device_index:
                 self.audio_engine.set_output_device(device_index)
                 
             # Select first bus
@@ -382,6 +382,7 @@ class MainFrame(wx.Frame):
             
             Speech.speak(f"Project loaded: {self.project_data.get('name', 'Unnamed')}")
             self.UpdateStatusBar()
+            self.PrepareVariants()
             
         except Exception as e:
             wx.MessageBox(f"Failed to load project from {path}:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
@@ -394,6 +395,44 @@ class MainFrame(wx.Frame):
                 self.settings["last_project_path"] = None
             self.SaveSettings()
             wx.CallAfter(self.OnManageProjects, None)
+
+    def ResolveOutputDevice(self, project):
+        """Device index for the project's saved output device. Indexes shift when
+        devices are plugged in or out, so the saved name wins; a name that is no
+        longer present means the system default."""
+        name = project.get("output_device_name")
+        if name:
+            for idx, dev_name in self.audio_engine.get_output_devices():
+                if dev_name == name:
+                    return idx
+            return None
+        return project.get("output_device")
+
+    def PrepareVariants(self):
+        """Render pitch-shifted variants in the background. Pitch on a long track
+        takes seconds; done on the first key press it would freeze the window."""
+        if not self.project_data or not self.project_dir:
+            return
+        sounds_dir = os.path.join(self.project_dir, "sounds")
+        jobs = []
+        for s in self.project_data.get("sounds", []):
+            if s.get("missing"):
+                continue
+            for scen in [s.get("default_scenario", {})] + s.get("scenarios", []):
+                if scen.get("pitch_semitones", 0.0):
+                    jobs.append((os.path.join(sounds_dir, s["filename"]),
+                                 scen.get("pitch_semitones", 0.0), scen.get("speed", 1.0)))
+        if not jobs:
+            return
+        engine = self.audio_engine
+
+        def work():
+            for path, pitch, speed in jobs:
+                try:
+                    engine.prepare(path, pitch, speed)
+                except Exception as e:
+                    logger.warning("Could not prepare %s: %s", path, e)
+        threading.Thread(target=work, daemon=True).start()
 
     def ApplyBusSettings(self):
         """Push every bus's volume and ducking settings to the audio engine."""
@@ -700,16 +739,20 @@ class MainFrame(wx.Frame):
         curr_device = self.audio_engine._device_index
         curr_volume = self.audio_engine._master_volume
         
-        dlg = ui_dialogs.PreferencesDialog(self, devices, curr_device, curr_volume)
+        dlg = ui_dialogs.PreferencesDialog(self, devices, curr_device, curr_volume,
+                                           check_updates=self.settings.get("check_updates", True))
         if dlg.ShowModal() == wx.ID_OK:
             new_device = dlg.GetSelectedDeviceIndex()
             new_vol = dlg.GetMasterVolume()
-            
-            # Apply device change
+            self.settings["check_updates"] = bool(dlg.GetCheckUpdates())
+            self.SaveSettings()
+
+            # Apply device change. The name is saved too, since indexes shift.
             if new_device != curr_device:
                 self.audio_engine.set_output_device(new_device)
-                if self.project_data:
-                    self.project_data["output_device"] = new_device
+            if self.project_data:
+                self.project_data["output_device"] = new_device
+                self.project_data["output_device_name"] = dict(devices).get(new_device)
                     
             # Apply volume change
             self.audio_engine.set_master_volume(new_vol)
@@ -748,6 +791,7 @@ class MainFrame(wx.Frame):
                 
                 self.RefreshSoundsList()
                 self.RebuildAccelerators()
+                self.PrepareVariants()
                 Speech.speak(f"Added {sound_data['name']}")
             except Exception as e:
                 wx.MessageBox(f"Failed to import sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
@@ -776,6 +820,7 @@ class MainFrame(wx.Frame):
 
         self.RefreshSoundsList()
         self.RebuildAccelerators()
+        self.PrepareVariants()
         Speech.speak("Sound Manager closed")
 
     def OnEditSound(self, event):
@@ -817,6 +862,7 @@ class MainFrame(wx.Frame):
                 
                 self.RefreshSoundsList()
                 self.RebuildAccelerators()
+                self.PrepareVariants()
                 Speech.speak(f"Updated {updated_data['name']}")
             except Exception as e:
                 wx.MessageBox(f"Failed to update sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
@@ -880,6 +926,7 @@ class MainFrame(wx.Frame):
         # Save project since scenarios dialog mutates sound directly
         project_manager.save_project(self.project_dir, self.project_data)
         self.RefreshSoundsList()
+        self.PrepareVariants()
 
     # --- Buses Menu Handlers ---
     def OnManageBuses(self, event):

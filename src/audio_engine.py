@@ -363,12 +363,22 @@ class AudioEngine:
             
         np.clip(outdata, -1.0, 1.0, out=outdata)
 
+    def _get_loaded(self, filepath):
+        sound = self._loaded_sounds.get(filepath)
+        if sound is None:
+            sound = LoadedSound(filepath, self.sample_rate)
+            self._loaded_sounds[filepath] = sound
+        return sound
+
+    def prepare(self, filepath, pitch_semitones, speed):
+        """Load a sound and render its pitch/speed variant ahead of time, so the
+        first press does not stall. Safe to call from a worker thread: at worst a
+        variant is rendered twice."""
+        self._get_loaded(filepath).get_data_for_pitch_and_speed(pitch_semitones, speed)
+
     def play(self, filepath, scenario, bus_id, bus_mode, exclusive_bus_ids=None, crossfade_ms=500, sound_name=""):
         """Plays a sound on a bus with a given scenario preset."""
-        if filepath not in self._loaded_sounds:
-            self._loaded_sounds[filepath] = LoadedSound(filepath, self.sample_rate)
-            
-        loaded_sound = self._loaded_sounds[filepath]
+        loaded_sound = self._get_loaded(filepath)
         pitch_semitones = scenario.get('pitch_semitones', 0.0)
         speed = scenario.get('speed', 1.0)
         audio_data = loaded_sound.get_data_for_pitch_and_speed(pitch_semitones, speed)
