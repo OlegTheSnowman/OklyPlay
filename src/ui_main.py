@@ -43,7 +43,8 @@ ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
 
 class MainFrame(wx.Frame):
     def __init__(self, parent, title="OklyPlay Soundboard"):
-        super().__init__(parent, title=title, size=(960, 640))
+        super().__init__(parent, title=title)
+        self.SetSize(self.FromDIP(wx.Size(960, 640)))
         
         # Audio Engine and Project attributes
         self.audio_engine = None
@@ -82,7 +83,7 @@ class MainFrame(wx.Frame):
 
         # Create Splitter Window
         self.splitter = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE | wx.SP_NOBORDER)
-        self.splitter.SetMinimumPaneSize(160)
+        self.splitter.SetMinimumPaneSize(self.FromDIP(160))
 
         # Left Panel (Buses)
         self.left_panel = wx.Panel(self.splitter)
@@ -104,7 +105,7 @@ class MainFrame(wx.Frame):
         head_row.Add(self.sounds_heading, 0, wx.ALIGN_CENTER_VERTICAL)
         head_row.AddStretchSpacer()
         search_lbl = wx.StaticText(self.right_panel, label="Search:")
-        self.search_ctrl = wx.TextCtrl(self.right_panel, size=(260, -1))
+        self.search_ctrl = wx.TextCtrl(self.right_panel, size=self.FromDIP(wx.Size(260, -1)))
         self.search_ctrl.SetHint("Type to filter")
         ui_dialogs.label_control(self.search_ctrl, "Search sounds. Type to filter the list below.")
         self.search_ctrl.Bind(wx.EVT_TEXT, self.OnSearchChanged)
@@ -122,7 +123,7 @@ class MainFrame(wx.Frame):
         self.right_panel.SetSizer(right_sizer)
 
         # Split layout
-        self.splitter.SplitVertically(self.left_panel, self.right_panel, 220)
+        self.splitter.SplitVertically(self.left_panel, self.right_panel, self.FromDIP(220))
 
         # Create Menu Bar
         self.CreateMenuBar()
@@ -130,7 +131,7 @@ class MainFrame(wx.Frame):
         # Create Status Bar: bus, bus volume, master volume, playing count
         self.status_bar = self.CreateStatusBar(4)
         self.status_bar.SetStatusWidths([-3, -2, -2, -1])
-        self.SetMinSize((640, 420))
+        self.SetMinSize(self.FromDIP(wx.Size(640, 420)))
         
         # Bind events
         self.buses_list.Bind(wx.EVT_LISTBOX, self.OnBusSelected)

@@ -60,9 +60,9 @@ class MessageDialog(wx.Dialog):
         super().__init__(parent, title=caption)
         panel = wx.Panel(self)
         lines = message.count("\n") + 1 + len(message) // 60
-        self.text = wx.TextCtrl(panel, value=message, size=(460, -1),
+        self.text = wx.TextCtrl(panel, value=message, size=panel.FromDIP(wx.Size(460, -1)),
                                 style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.text.SetMinSize((460, self.text.GetCharHeight() * max(3, min(lines, 14)) + 12))
+        self.text.SetMinSize((panel.FromDIP(460), self.text.GetCharHeight() * max(3, min(lines, 14)) + 12))
         label_control(self.text, caption)
         self.text.Bind(wx.EVT_KEY_DOWN, self._OnTextKey)
 
@@ -218,7 +218,8 @@ def finish_dialog(dlg, panel, content, min_size=(0, 0)):
     frame_sizer.Add(panel, 1, wx.EXPAND)
     dlg.SetSizerAndFit(frame_sizer)
     w, h = dlg.GetSize()
-    dlg.SetSize((max(w, min_size[0]), max(h, min_size[1])))
+    min_w, min_h = dlg.FromDIP(wx.Size(*min_size))
+    dlg.SetSize((max(w, min_w), max(h, min_h)))
     dlg.SetMinSize(dlg.GetSize())
     dlg.CenterOnParent()
 
@@ -539,11 +540,11 @@ class SoundManagerDialog(wx.Dialog):
             )
         )
         hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
-        hint.Wrap(740)
+        hint.Wrap(panel.FromDIP(740))
         main_sizer.Add(hint, 0, wx.EXPAND | wx.BOTTOM, GAP)
 
         # Sound list
-        self.sound_list = wx.ListCtrl(panel, size=(760, 360), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.sound_list = wx.ListCtrl(panel, size=panel.FromDIP(wx.Size(760, 360)), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.sound_list, "Sounds List. Press Ctrl+1 through 9 to assign bus")
         self.sound_list.InsertColumn(0, "Name")
         self.sound_list.InsertColumn(1, "Bus")
@@ -1189,7 +1190,7 @@ class ManageBusesDialog(wx.Dialog):
         # Left Side: Bus list
         list_sizer = wx.BoxSizer(wx.VERTICAL)
         list_lbl = heading(panel, "Buses")
-        self.bus_list = wx.ListCtrl(panel, size=(820, 260), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.bus_list = wx.ListCtrl(panel, size=panel.FromDIP(wx.Size(820, 260)), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.bus_list, "Buses List")
         self.bus_list.InsertColumn(0, "Name", width=120)
         self.bus_list.InsertColumn(1, "Mode", width=80)
@@ -1450,7 +1451,7 @@ class EditScenariosDialog(wx.Dialog):
         # Left Side: Scenarios List
         list_sizer = wx.BoxSizer(wx.VERTICAL)
         list_lbl = heading(panel, "Scenarios")
-        self.scen_list = wx.ListCtrl(panel, size=(640, 240), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.scen_list = wx.ListCtrl(panel, size=panel.FromDIP(wx.Size(640, 240)), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.scen_list, "Scenarios List")
         self.scen_list.InsertColumn(0, "Name", width=140)
         self.scen_list.InsertColumn(1, "Vol", width=45)
@@ -1611,7 +1612,7 @@ class ProjectManagerDialog(wx.Dialog):
         # Left Side: Projects List
         list_sizer = wx.BoxSizer(wx.VERTICAL)
         list_lbl = heading(panel, "Recent Projects")
-        self.projects_list = wx.ListCtrl(panel, size=(560, 280), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.projects_list = wx.ListCtrl(panel, size=panel.FromDIP(wx.Size(560, 280)), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.projects_list, "Recent Projects List")
         self.projects_list.InsertColumn(0, "Name", width=180)
         self.projects_list.InsertColumn(1, "Path", width=250)
