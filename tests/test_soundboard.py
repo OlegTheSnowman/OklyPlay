@@ -413,7 +413,7 @@ class TestUIDialogs(unittest.TestCase):
         data = dlg.GetBusData()
         for key in ("crossfade_ms", "track_crossfade_ms", "hotkey_action", "duckable"):
             self.assertEqual(data[key], project_manager.BUS_MODE_DEFAULTS["layered"][key], key)
-        dlg.mode_choice.SetStringSelection("exclusive")
+        dlg.mode_choice.SetStringSelection("Exclusive")
         dlg.OnModeChanged(None)
         data = dlg.GetBusData()
         dlg.Destroy()
@@ -1490,6 +1490,23 @@ class TestWelcomeAndProjectManager(unittest.TestCase):
         self.frame.Destroy()
         for p in self.patchers:
             p.stop()
+
+    def test_release_notes_shown_as_plain_text(self):
+        notes = updater.plain_notes("### Fixed\n- Pitch **now** works\n- Uses `numpy`\n")
+        self.assertEqual(notes, "Fixed:\n• Pitch now works\n• Uses numpy")
+
+    def test_empty_bus_and_no_match_messages(self):
+        proj = tempfile.mkdtemp()
+        try:
+            project_manager.create_project(proj, "Empty")
+            self.frame.LoadProject(proj)
+            self.assertTrue(self.frame.empty_lbl.IsShown())
+            self.assertIn("No sounds on this bus yet", self.frame.empty_lbl.GetLabel())
+            self.frame.search_ctrl.SetValue("zzz")
+            self.assertEqual(self.frame.empty_lbl.GetLabel(), 'No sounds match "zzz".')
+        finally:
+            self.frame.project_data = None
+            shutil.rmtree(proj)
 
     def test_welcome_shown_without_project(self):
         self.assertTrue(self.frame.welcome.IsShown())

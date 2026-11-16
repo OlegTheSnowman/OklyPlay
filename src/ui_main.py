@@ -140,6 +140,14 @@ class MainFrame(wx.Frame):
         self.sounds_list.SetImageList(self._sound_images, wx.IMAGE_LIST_SMALL)
         self._playing_ids = set()
 
+        # Shown above the list when it is empty (no sounds, or no search match).
+        # Visual only: the search result count is already spoken.
+        # It sits inside the empty list, centred, like a placeholder.
+        self.empty_lbl = wx.StaticText(self.sounds_list, label="")
+        self.empty_lbl.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+        self.empty_lbl.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_LISTBOX))
+        self.empty_lbl.Hide()
+        self.sounds_list.Bind(wx.EVT_SIZE, self._OnSoundsListSize)
         right_sizer.Add(self.sounds_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, pad)
         self.right_panel.SetSizer(right_sizer)
 
@@ -179,7 +187,7 @@ class MainFrame(wx.Frame):
         header = wx.Panel(parent)
         header.SetBackgroundColour(branding.ACCENT)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        logo = wx.StaticBitmap(header, bitmap=branding.draw_logo(self.FromDIP(28)))
+        logo = wx.StaticBitmap(header, bitmap=branding.draw_logo(self.FromDIP(28), tile=False))
         name = wx.StaticText(header, label="OklyPlay")
         font = name.GetFont()
         font.SetWeight(wx.FONTWEIGHT_BOLD)
@@ -187,7 +195,7 @@ class MainFrame(wx.Frame):
         name.SetFont(font)
         name.SetForegroundColour(branding.ACCENT_TEXT)
         self.header_project = wx.StaticText(header, label="")
-        self.header_project.SetForegroundColour(branding.ACCENT_SUBTLE)
+        self.header_project.SetForegroundColour(branding.ACCENT_TEXT)
         pad = ui_dialogs.PAD
         row.Add(logo, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, pad)
         row.Add(name, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, ui_dialogs.GAP)
@@ -249,11 +257,11 @@ class MainFrame(wx.Frame):
                 self._MarkRow(row, sound["id"] in playing)
 
     def _MarkRow(self, row, playing):
+        # Speaker icon plus accent-coloured text. A native list can only style
+        # whole rows, and bold made every cell of the row shout.
         self.sounds_list.SetItemImage(row, self._img_playing if playing else self._img_blank)
-        font = self.sounds_list.GetFont()
-        if playing:
-            font.SetWeight(wx.FONTWEIGHT_BOLD)
-        self.sounds_list.SetItemFont(row, font)
+        colour = branding.ACCENT if playing else wx.SystemSettings.GetColour(wx.SYS_COLOUR_LISTBOXTEXT)
+        self.sounds_list.SetItemTextColour(row, colour)
 
     def CreateMenuBar(self):
         menubar = wx.MenuBar()
@@ -607,10 +615,37 @@ class MainFrame(wx.Frame):
             self.sounds_list.InsertItem(idx, sound["name"])
             self.sounds_list.SetItem(idx, 1, sound.get("hotkey", ""))
             scen_count = len(sound.get("scenarios", []))
-            self.sounds_list.SetItem(idx, 2, f"{scen_count} scenario" + ("" if scen_count == 1 else "s"))
+            # Blank rather than "0 scenarios" on every row
+            if scen_count:
+                self.sounds_list.SetItem(idx, 2, f"{scen_count} scenario" + ("" if scen_count == 1 else "s"))
             self.sounds_list.SetItemData(idx, idx)
             self._MarkRow(idx, sound["id"] in self._playing_ids)
-        ui_dialogs.polish_list(self.sounds_list)
+        # Fixed widths for Hotkey and Scenarios keep the columns from jumping
+        # between buses and searches; Name takes the rest.
+        ui_dialogs.polish_list(self.sounds_list, stretch_col=0,
+                               fixed={1: self.FromDIP(130), 2: self.FromDIP(130)})
+
+        if self.current_bus_sounds:
+            empty = ""
+        elif search_text:
+            empty = f'No sounds match "{self.search_ctrl.GetValue().strip()}".'
+        else:
+            empty = "No sounds on this bus yet. Press Ctrl+I to add one, or Alt+S for the Sound Manager."
+        if self.empty_lbl.GetLabel() != empty:
+            self.empty_lbl.SetLabel(empty)
+            self.empty_lbl.Show(bool(empty))
+            self._PlaceEmptyLabel()
+
+    def _OnSoundsListSize(self, event):
+        event.Skip()
+        wx.CallAfter(self._PlaceEmptyLabel)
+
+    def _PlaceEmptyLabel(self):
+        if not self or not self.empty_lbl.IsShown():
+            return
+        w = self.sounds_list.GetClientSize().width
+        size = self.empty_lbl.GetBestSize()
+        self.empty_lbl.SetSize(max(0, (w - size.width) // 2), self.FromDIP(64), size.width, size.height)
 
     def OnSearchChanged(self, event):
         """Filter sounds list as the user types in the search bar."""

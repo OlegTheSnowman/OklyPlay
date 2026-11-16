@@ -59,11 +59,19 @@ class MessageDialog(wx.Dialog):
     def __init__(self, parent, message, caption, style):
         super().__init__(parent, title=caption)
         panel = wx.Panel(self)
-        lines = message.count("\n") + 1 + len(message) // 60
-        self.text = wx.TextCtrl(panel, value=message, size=panel.FromDIP(wx.Size(460, -1)),
-                                style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.text.SetMinSize((panel.FromDIP(460), self.text.GetCharHeight() * max(3, min(lines, 14)) + 12))
+        lines = sum(1 + len(line) // 60 for line in message.split("\n"))
+        # Borderless and on the dialog colour, so it reads as a message rather
+        # than an input field; the scrollbar only appears for long text.
+        text_style = wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE
+        if lines <= 14:
+            text_style |= wx.TE_NO_VSCROLL
+        self.text = wx.TextCtrl(panel, value=message, size=panel.FromDIP(wx.Size(420, -1)), style=text_style)
+        self.text.SetBackgroundColour(panel.GetBackgroundColour())
+        self.text.SetMinSize((panel.FromDIP(420), self.text.GetCharHeight() * max(1, min(lines, 14)) + 8))
         label_control(self.text, caption)
+        # No blinking cursor in what is static text to sighted eyes. The edit
+        # still has focus and a caret position, so NVDA reads it by line or word.
+        self.text.Bind(wx.EVT_SET_FOCUS, self._OnTextFocus)
         self.text.Bind(wx.EVT_KEY_DOWN, self._OnTextKey)
 
         if not style & (wx.YES_NO | wx.OK | wx.CANCEL):
@@ -83,12 +91,24 @@ class MessageDialog(wx.Dialog):
         self.FindWindowById(self.default_id, self).SetDefault()
         self.SetEscapeId(wx.ID_CANCEL if wx.ID_CANCEL in ids else wx.ID_NO if wx.ID_NO in ids else wx.ID_OK)
 
+        body = wx.BoxSizer(wx.HORIZONTAL)
+        art = {wx.ICON_ERROR: wx.ART_ERROR, wx.ICON_WARNING: wx.ART_WARNING,
+               wx.ICON_QUESTION: wx.ART_QUESTION, wx.ICON_INFORMATION: wx.ART_INFORMATION}
+        art_id = next((a for flag, a in art.items() if style & flag), wx.ART_INFORMATION)
+        icon = wx.StaticBitmap(panel, bitmap=wx.ArtProvider.GetBitmapBundle(art_id, wx.ART_MESSAGE_BOX))
+        body.Add(icon, 0, wx.RIGHT, PAD)
+        body.Add(self.text, 1, wx.EXPAND | wx.TOP, GAP // 2)
+
         content = wx.BoxSizer(wx.VERTICAL)
-        content.Add(self.text, 1, wx.EXPAND | wx.BOTTOM, PAD)
+        content.Add(body, 1, wx.EXPAND | wx.BOTTOM, PAD + GAP)
         content.Add(btn_row, 0, wx.ALIGN_RIGHT)
         finish_dialog(self, panel, content)
         self.text.SetFocus()
         self.text.SetInsertionPoint(0)
+
+    def _OnTextFocus(self, event):
+        event.Skip()
+        wx.CallAfter(lambda: self.text and ctypes.windll.user32.HideCaret(self.text.GetHandle()))
 
     def _OnTextKey(self, event):
         # A multiline edit would swallow Enter; make it press the default button.
@@ -165,10 +185,12 @@ def form_group(parent, title):
     return box_sizer, grid, box_sizer.GetStaticBox()
 
 
-def polish_list(list_ctrl, stretch_col=0):
-    """Size every column to fit its header and contents, give the stretch column
-    the spare width, and tint alternate rows. Call after (re)populating a list.
-    The first call also hooks resizing, so the stretch column keeps filling the width."""
+def polish_list(list_ctrl, stretch_col=0, fixed=None):
+    """Size every column to fit its header and contents (or to its width in
+    fixed, {column: pixels}), give the stretch column the spare width, and tint
+    alternate rows. Call after (re)populating a list. The first call also hooks
+    resizing, so the stretch column keeps filling the width."""
+    fixed = fixed or {}
     if not hasattr(list_ctrl, "_polish_width"):
         list_ctrl._polish_width = -1
 
@@ -178,19 +200,26 @@ def polish_list(list_ctrl, stretch_col=0):
             # which sends another size event and would loop forever.
             if event.GetSize().width != list_ctrl._polish_width:
                 list_ctrl._polish_width = event.GetSize().width
-                wx.CallAfter(lambda: list_ctrl and polish_list(list_ctrl, stretch_col))
+                wx.CallAfter(lambda: list_ctrl and polish_list(list_ctrl, stretch_col, fixed))
         list_ctrl.Bind(wx.EVT_SIZE, on_size)
 
     count = list_ctrl.GetColumnCount()
     for col in range(count):
+        if col in fixed:
+            list_ctrl.SetColumnWidth(col, fixed[col])
+            continue
         # Header text is measured directly: LIST_AUTOSIZE_USEHEADER on the last
         # column stretches it to the list edge, which would overflow.
         header_w = list_ctrl.GetTextExtent(list_ctrl.GetColumn(col).GetText()).width + 2 * PAD
         list_ctrl.SetColumnWidth(col, wx.LIST_AUTOSIZE)
         list_ctrl.SetColumnWidth(col, max(header_w, list_ctrl.GetColumnWidth(col) + GAP))
     spare = list_ctrl.GetClientSize().width - sum(list_ctrl.GetColumnWidth(c) for c in range(count))
-    if spare > 0 and 0 <= stretch_col < count:
-        list_ctrl.SetColumnWidth(stretch_col, list_ctrl.GetColumnWidth(stretch_col) + spare - 1)
+    if spare and 0 <= stretch_col < count:
+        # Fill spare width, or shrink the stretch column (Windows adds an
+        # ellipsis) rather than show a horizontal scrollbar. Screen readers
+        # still get the full text.
+        header_w = list_ctrl.GetTextExtent(list_ctrl.GetColumn(stretch_col).GetText()).width + 2 * PAD
+        list_ctrl.SetColumnWidth(stretch_col, max(header_w, list_ctrl.GetColumnWidth(stretch_col) + spare - 1))
 
     # Under Windows high contrast the user's theme wins, so no custom tint.
     try:
@@ -208,9 +237,37 @@ def polish_list(list_ctrl, stretch_col=0):
         list_ctrl.SetItemBackgroundColour(row, stripe if row % 2 else base)
 
 
+def _form_grids(sizer):
+    """Every two-column label/field grid (from form_group) inside sizer."""
+    for item in sizer.GetChildren():
+        sub = item.GetSizer()
+        if sub is None:
+            continue
+        if isinstance(sub, wx.FlexGridSizer) and sub.GetCols() == 2:
+            yield sub
+        yield from _form_grids(sub)
+
+
+def _align_form_labels(content):
+    """Give the label column of every group the same width, so the fields of
+    all groups in a dialog start at one x position."""
+    labels = []
+    for grid in _form_grids(content):
+        for i, item in enumerate(grid.GetChildren()):
+            win = item.GetWindow()
+            if i % 2 == 0 and isinstance(win, wx.StaticText):
+                labels.append(win)
+    if len(labels) < 2:
+        return
+    width = max(lbl.GetBestSize().width for lbl in labels)
+    for lbl in labels:
+        lbl.SetMinSize((width, -1))
+
+
 def finish_dialog(dlg, panel, content, min_size=(0, 0)):
     """Lay out a dialog around its content sizer with standard padding and size it to fit,
     instead of a hard-coded size that clips or leaves dead space."""
+    _align_form_labels(content)
     outer = wx.BoxSizer(wx.VERTICAL)
     outer.Add(content, 1, wx.EXPAND | wx.ALL, PAD)
     panel.SetSizer(outer)
@@ -534,9 +591,8 @@ class SoundManagerDialog(wx.Dialog):
         hint = wx.StaticText(
             panel,
             label=(
-                "Ctrl+1 to Ctrl+9 moves the selected sound to that bus, Ctrl+U clears the bus. "
-                "F2 edits, Delete removes, Ctrl+I imports from a file picker, "
-                "Ctrl+V pastes files copied in Explorer."
+                "Ctrl+1 to Ctrl+9 moves the selected sound to that bus, Ctrl+U clears it. "
+                "Ctrl+V pastes audio files copied in Explorer."
             )
         )
         hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
@@ -1023,7 +1079,7 @@ class AddEditBusDialog(wx.Dialog):
         
         # Mode choice
         grid.Add(wx.StaticText(box, label="Playback Mode:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.mode_choice = wx.Choice(box, choices=["exclusive", "layered"])
+        self.mode_choice = wx.Choice(box, choices=["Exclusive", "Layered"])
         label_control(self.mode_choice, "Playback Mode")
         grid.Add(self.mode_choice, 1, wx.EXPAND)
         self.mode_choice.SetSelection(1)  # Default layered
@@ -1087,7 +1143,7 @@ class AddEditBusDialog(wx.Dialog):
         if bus_data:
             self.name_txt.SetValue(bus_data.get("name", ""))
             mode = bus_data.get("mode", "layered")
-            self.mode_choice.SetStringSelection(mode if mode == "exclusive" else "layered")
+            self.mode_choice.SetSelection(0 if mode == "exclusive" else 1)
             self.vol_slider.SetValue(int(bus_data.get("volume", 1.0) * 100))
             self.hotkey_txt.SetValue(bus_data.get("hotkey", ""))
             self.hotkey_txt.hotkey_value = bus_data.get("hotkey", "")
@@ -1146,7 +1202,7 @@ class AddEditBusDialog(wx.Dialog):
  
     def OnModeChanged(self, event):
         # Switching mode suggests that mode's defaults
-        self._ShowModeSettings({"mode": self.mode_choice.GetStringSelection()})
+        self._ShowModeSettings({"mode": self.mode_choice.GetStringSelection().lower()})
 
     def _ShowModeSettings(self, bus):
         """Fill the mode-dependent controls from bus, defaulting per its mode."""
@@ -1159,7 +1215,7 @@ class AddEditBusDialog(wx.Dialog):
         self.duckable_chk.SetValue(project_manager.bus_setting(bus, "duckable"))
 
     def GetBusData(self):
-        sel_mode = self.mode_choice.GetStringSelection()
+        sel_mode = self.mode_choice.GetStringSelection().lower()
         action_idx = self.action_choice.GetSelection()
         hotkey_action = self.action_mapping[action_idx] if action_idx != wx.NOT_FOUND else "single_shuffle"
         
@@ -1234,7 +1290,7 @@ class ManageBusesDialog(wx.Dialog):
         self.bus_list.DeleteAllItems()
         for idx, bus in enumerate(self.project_data["buses"]):
             self.bus_list.InsertItem(idx, bus.get("name", "Unnamed"))
-            self.bus_list.SetItem(idx, 1, bus.get("mode", "layered"))
+            self.bus_list.SetItem(idx, 1, bus.get("mode", "layered").capitalize())
             self.bus_list.SetItem(idx, 2, f"{int(bus.get('volume', 1.0) * 100)}%")
             self.bus_list.SetItem(idx, 3, bus.get("hotkey", ""))
             self.bus_list.SetItem(idx, 4, f"{project_manager.bus_setting(bus, 'crossfade_ms')} ms")
@@ -1454,7 +1510,7 @@ class EditScenariosDialog(wx.Dialog):
         self.scen_list = wx.ListCtrl(panel, size=panel.FromDIP(wx.Size(640, 240)), style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         label_control(self.scen_list, "Scenarios List")
         self.scen_list.InsertColumn(0, "Name", width=140)
-        self.scen_list.InsertColumn(1, "Vol", width=45)
+        self.scen_list.InsertColumn(1, "Volume", width=45)
         self.scen_list.InsertColumn(2, "Fade In", width=65)
         self.scen_list.InsertColumn(3, "Fade Out", width=65)
         self.scen_list.InsertColumn(4, "Speed", width=55)
@@ -1503,8 +1559,8 @@ class EditScenariosDialog(wx.Dialog):
         for idx, scen in enumerate(self.sound_data["scenarios"]):
             self.scen_list.InsertItem(idx, scen["name"])
             self.scen_list.SetItem(idx, 1, f"{int(scen['volume'] * 100)}%")
-            self.scen_list.SetItem(idx, 2, f"{scen['fade_in_ms']}ms")
-            self.scen_list.SetItem(idx, 3, f"{scen['fade_out_ms']}ms")
+            self.scen_list.SetItem(idx, 2, f"{scen['fade_in_ms']} ms")
+            self.scen_list.SetItem(idx, 3, f"{scen['fade_out_ms']} ms")
             self.scen_list.SetItem(idx, 4, f"{scen['speed']}x")
             pitch = scen.get("pitch_semitones", 0.0)
             pitch_str = f"+{pitch:g}" if pitch > 0 else f"{pitch:g}"
@@ -1627,15 +1683,21 @@ class ProjectManagerDialog(wx.Dialog):
         self.browse_btn = wx.Button(panel, label="&Browse Other...")
         self.remove_btn = wx.Button(panel, label="&Remove from List")
         self.delete_btn = wx.Button(panel, label="&Delete Project Files...")
-        self.exit_btn = wx.Button(panel, label="&Exit App")
-        
+
         btn_sizer.Add(self.open_btn, 0, wx.EXPAND | wx.BOTTOM, 8)
         btn_sizer.Add(self.new_btn, 0, wx.EXPAND | wx.BOTTOM, 8)
         btn_sizer.Add(self.browse_btn, 0, wx.EXPAND | wx.BOTTOM, 20)
         btn_sizer.Add(self.remove_btn, 0, wx.EXPAND | wx.BOTTOM, 8)
-        btn_sizer.Add(self.delete_btn, 0, wx.EXPAND | wx.BOTTOM, 20)
-        btn_sizer.Add(self.exit_btn, 0, wx.EXPAND)
-        
+        btn_sizer.Add(self.delete_btn, 0, wx.EXPAND)
+
+        # Dialog-level buttons along the bottom, apart from the project actions
+        self.close_btn = wx.Button(panel, wx.ID_CANCEL, "&Close")
+        self.exit_btn = wx.Button(panel, label="E&xit OklyPlay")
+        bottom = wx.BoxSizer(wx.HORIZONTAL)
+        bottom.AddStretchSpacer()
+        bottom.Add(self.close_btn, 0, wx.RIGHT, GAP)
+        bottom.Add(self.exit_btn, 0)
+
         # Bind events
         self.open_btn.Bind(wx.EVT_BUTTON, self.OnOpen)
         self.new_btn.Bind(wx.EVT_BUTTON, self.OnNew)
@@ -1649,8 +1711,11 @@ class ProjectManagerDialog(wx.Dialog):
         panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
         panel_sizer.Add(list_sizer, 1, wx.EXPAND | wx.RIGHT, PAD)
         panel_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.TOP, 26)
-        finish_dialog(self, panel, panel_sizer)
-        
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(panel_sizer, 1, wx.EXPAND | wx.BOTTOM, PAD)
+        content.Add(bottom, 0, wx.EXPAND)
+        finish_dialog(self, panel, content)
+
         self.PopulateList(last_project_path)
         self.projects_list.SetFocus()
         self.CenterOnParent()
