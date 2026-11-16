@@ -1300,6 +1300,178 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         frame.Destroy()
 
 
+def _peak_hz(mono, sr):
+    return np.fft.rfftfreq(len(mono), 1 / sr)[np.argmax(np.abs(np.fft.rfft(mono)))]
+
+
+class TestPitchShift(unittest.TestCase):
+    # The old double-resample returned the input unchanged, so the pitch setting
+    # did nothing while the length-only test still passed. Measure the frequency.
+    def test_pitch_moves_frequency_and_keeps_length(self):
+        from audio_engine import _pitch_shift
+        sr = 44100
+        tone = (0.5 * np.sin(2 * np.pi * 440 * np.arange(sr) / sr)).astype(np.float32)
+        data = np.column_stack((tone, tone))
+        for semitones in (12, -12, 5, -3):
+            out = _pitch_shift(data, semitones)
+            self.assertEqual(out.shape, data.shape)
+            self.assertEqual(out.dtype, np.float32)
+            expected = 440 * 2 ** (semitones / 12)
+            self.assertAlmostEqual(_peak_hz(out[:, 0], sr), expected, delta=expected * 0.02)
+            self.assertGreater(np.abs(out[4000:-4000]).max(), 0.3)  # not faded to silence
+
+    def test_zero_and_tiny_inputs_pass_through(self):
+        from audio_engine import _pitch_shift
+        data = np.ones((100, 2), dtype=np.float32)
+        self.assertIs(_pitch_shift(data, 0.0), data)
+        self.assertEqual(_pitch_shift(data, 3.0).shape, (100, 2))
+
+
+class TestSafeImport(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _zip(self, name, files):
+        import zipfile
+        path = os.path.join(self.temp_dir, name)
+        with zipfile.ZipFile(path, "w") as z:
+            for arc, text in files.items():
+                z.writestr(arc, text)
+        return path
+
+    def test_bad_zip_leaves_existing_folder_alone(self):
+        # A bad zip used to rmtree the destination, wiping a folder that was already there.
+        dest = os.path.join(self.temp_dir, "Stuff")
+        os.makedirs(dest)
+        keep = os.path.join(dest, "precious.txt")
+        open(keep, "w").close()
+        bad = self._zip("Stuff.zip", {"readme.txt": "hi"})
+        with self.assertRaises(ValueError):
+            project_manager.import_project(bad, dest)
+        self.assertTrue(os.path.exists(keep))
+
+    def test_bad_zip_into_new_folder_leaves_nothing(self):
+        dest = os.path.join(self.temp_dir, "New")
+        bad = self._zip("New.zip", {"readme.txt": "hi"})
+        with self.assertRaises(ValueError):
+            project_manager.import_project(bad, dest)
+        self.assertFalse(os.path.exists(dest))
+        self.assertEqual(os.listdir(self.temp_dir), ["New.zip"])  # no scratch folder left
+
+    def test_zip_with_project_in_one_subfolder_imports(self):
+        # Explorer's "Send to compressed folder" puts everything under the folder name.
+        good = self._zip("Show.zip", {"Show/project.json": json.dumps({"name": "Show", "buses": [], "sounds": []}),
+                                      "Show/sounds/a.wav": ""})
+        dest = os.path.join(self.temp_dir, "Show")
+        project_manager.import_project(good, dest)
+        self.assertTrue(project_manager.is_project_dir(dest))
+        self.assertTrue(os.path.exists(os.path.join(dest, "sounds", "a.wav")))
+
+
+class TestDeleteOnlyProjects(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    @patch('wx.MessageBox', return_value=wx.YES)
+    def test_refuses_folder_without_project_json(self, mock_msg):
+        folder = tempfile.mkdtemp()
+        try:
+            dlg = ui_dialogs.ProjectManagerDialog(None, [{"name": "Docs", "path": folder}])
+            dlg.OnDelete(None)
+            dlg.Destroy()
+            self.assertTrue(os.path.isdir(folder))
+            self.assertIn("does not contain an OklyPlay project", mock_msg.call_args[0][0])
+        finally:
+            shutil.rmtree(folder)
+
+
+class TestReservedHotkeys(unittest.TestCase):
+    @patch('wx.MessageBox')
+    def test_builtin_shortcuts_are_refused(self, mock_msg):
+        for key in ("Ctrl+1", "alt+3", "Escape", "Ctrl+S", "Alt+S", "Space"):
+            self.assertTrue(ui_dialogs.warn_hotkey_conflict([], [], key), key)
+        self.assertFalse(ui_dialogs.warn_hotkey_conflict([], [], "Ctrl+Shift+1"))
+        self.assertFalse(ui_dialogs.warn_hotkey_conflict([], [], "F5"))
+
+
+class TestOutputDeviceByName(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    def setUp(self):
+        self.patchers = [patch('sounddevice.OutputStream'), patch('accessible_speech.Speech.speak'),
+                         patch.object(ui_main.MainFrame, "LoadSettingsAndLastProject",
+                                      lambda self: setattr(self, "settings", {"recent_projects": []}))]
+        for p in self.patchers:
+            p.start()
+        self.frame = ui_main.MainFrame(None)
+        self.frame.audio_engine.get_output_devices = lambda: [(3, "Speakers"), (7, "Headset")]
+
+    def tearDown(self):
+        self.frame.Destroy()
+        for p in self.patchers:
+            p.stop()
+
+    def test_name_wins_over_stale_index(self):
+        # Indexes shift when devices come and go; the saved name finds the right one.
+        self.assertEqual(self.frame.ResolveOutputDevice({"output_device": 3, "output_device_name": "Headset"}), 7)
+
+    def test_missing_device_falls_back_to_default(self):
+        self.assertIsNone(self.frame.ResolveOutputDevice({"output_device": 3, "output_device_name": "Gone"}))
+
+    def test_old_projects_without_name_keep_index(self):
+        self.assertEqual(self.frame.ResolveOutputDevice({"output_device": 3}), 3)
+
+
+class TestUpdater(unittest.TestCase):
+    def test_version_compare(self):
+        self.assertTrue(updater.is_newer("v1.2.0", "1.1.9"))
+        self.assertTrue(updater.is_newer("1.10.0", "1.9.0"))
+        self.assertFalse(updater.is_newer("v1.1.0", "1.1.0"))
+        self.assertFalse(updater.is_newer("", "1.1.0"))
+
+    def _fake_response(self, payload):
+        import io
+        resp = io.BytesIO(payload)
+        resp.headers = {"Content-Length": str(len(payload))}
+        return resp
+
+    def test_download_checks_sha256(self):
+        import hashlib
+        payload = b"MZ" + b"x" * 100000
+        dest = os.path.join(tempfile.mkdtemp(), "new.exe")
+        good = {"url": "u", "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+        with patch('updater._get', return_value=self._fake_response(payload)):
+            updater.download(good, dest)
+        with open(dest, "rb") as f:
+            self.assertEqual(f.read(), payload)
+
+        bad = dict(good, sha256="0" * 64)
+        with patch('updater._get', return_value=self._fake_response(payload)):
+            with self.assertRaises(updater.UpdateError):
+                updater.download(bad, dest)
+        self.assertFalse(os.path.exists(dest))  # damaged file is not left behind
+        shutil.rmtree(os.path.dirname(dest))
+
+    def test_install_swaps_exe_and_keeps_old(self):
+        folder = tempfile.mkdtemp()
+        exe = os.path.join(folder, "OklyPlay.exe")
+        new = os.path.join(folder, "OklyPlay.new.exe")
+        open(exe, "w").write("old")
+        open(new, "w").write("new")
+        with patch('sys.executable', exe), patch('subprocess.Popen') as popen:
+            updater.install_and_restart(new)
+        self.assertEqual(open(exe).read(), "new")
+        self.assertEqual(open(os.path.join(folder, "OklyPlay.old.exe")).read(), "old")
+        popen.assert_called_once_with([exe], close_fds=True)
+        shutil.rmtree(folder)
+
+
 if __name__ == "__main__":
     unittest.main()
 
