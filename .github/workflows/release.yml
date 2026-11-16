@@ -1,9 +1,9 @@
 name: Release OklyPlay
 
+# Releases are built and published locally (see build_portable.bat and
+# gh release create). This workflow stays as a manual fallback only.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write

@@ -5,6 +5,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] - 2026-11-16
+
+### Added
+
+- **Updates from GitHub** - Help > Check for Updates, plus a quiet check at startup that you can turn off in Preferences. The exe downloads the new version, checks it and restarts itself.
+- **A fresh look** - an indigo header with the new logo and the open project, a colour dot and mode for each bus, a speaker icon on sounds that are playing, and a welcome screen when no project is open.
+- **Readable message boxes** - every message opens with its text in a focused read-only field, so a screen reader can read it line by line. Tab reaches the buttons.
+
+### Fixed
+
+- **Pitch** now really changes the pitch. Before, every pitch setting played the original.
+- **Importing a zip** can no longer delete a folder that already exists, and projects zipped with Explorer import fine.
+- **Delete Project Files** only deletes folders that hold an OklyPlay project.
+- **Output device** is remembered by name, so plugging in a headset no longer sends sound to the wrong device.
+- **Hotkeys** that clash with built-in shortcuts (Ctrl+1, Alt+1, Escape and others) are refused. The Scenarios menu is now Alt+C.
+- **Settings** stay in one folder whatever the exe is called; recent projects carry over.
+- **Display scaling** - at 125% and above the window is sharp, and NVDA no longer places OK and Cancel inside a group box.
+- **Speech in the exe** - the screen reader libraries are now bundled.
+- Cancelling Project Manager returns to the welcome screen instead of quitting.
+
+---
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
