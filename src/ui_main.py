@@ -254,6 +254,8 @@ class MainFrame(wx.Frame):
                 
         if "recent_projects" not in self.settings or not isinstance(self.settings["recent_projects"], list):
             self.settings["recent_projects"] = []
+        if not self.settings["recent_projects"] and not self.settings.get("last_project_path"):
+            self._MigrateLegacySettings(user_data_dir)
             
         # Clean up missing directories from recent list robustly
         cleaned_recent = []
@@ -265,6 +267,23 @@ class MainFrame(wx.Frame):
                 except Exception:
                     pass
         self.settings["recent_projects"] = cleaned_recent
+
+    def _MigrateLegacySettings(self, user_data_dir):
+        """Older builds kept settings in a folder named after the file that was run:
+        "soundboard" from source, "OklyPlay(1)" for a renamed download. Carry the
+        recent projects over once, so they are not lost when the name is fixed."""
+        parent = os.path.dirname(user_data_dir)
+        for legacy in ("soundboard", "OklyPlay(1)", "OklyPlay (1)"):
+            path = os.path.join(parent, legacy, "settings.json")
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    old = json.load(f)
+            except Exception:
+                continue
+            if old.get("recent_projects"):
+                self.settings["recent_projects"] = old["recent_projects"]
+                self.settings["last_project_path"] = old.get("last_project_path")
+                return
 
     def SaveSettings(self):
         sp = wx.StandardPaths.Get()
