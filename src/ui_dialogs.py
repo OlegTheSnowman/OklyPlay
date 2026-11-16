@@ -45,6 +45,75 @@ RESERVED_HOTKEYS = {
 }
 
 
+class MessageDialog(wx.Dialog):
+    """Message box a screen reader user can read at leisure.
+
+    The text sits in a read-only edit box that has focus when the dialog opens,
+    so it can be read line by line, spelled or copied. Tab reaches the buttons.
+    Enter presses the default button, Escape the cancel one."""
+
+    # (style flag, button id, label) in display order
+    _BUTTONS = [(wx.YES, wx.ID_YES, "&Yes"), (wx.NO, wx.ID_NO, "&No"),
+                (wx.OK, wx.ID_OK, "OK"), (wx.CANCEL, wx.ID_CANCEL, "Cancel")]
+
+    def __init__(self, parent, message, caption, style):
+        super().__init__(parent, title=caption)
+        panel = wx.Panel(self)
+        lines = message.count("\n") + 1 + len(message) // 60
+        self.text = wx.TextCtrl(panel, value=message, size=(460, -1),
+                                style=wx.TE_MULTILINE | wx.TE_READONLY)
+        self.text.SetMinSize((460, self.text.GetCharHeight() * max(3, min(lines, 14)) + 12))
+        label_control(self.text, caption)
+        self.text.Bind(wx.EVT_KEY_DOWN, self._OnTextKey)
+
+        if not style & (wx.YES_NO | wx.OK | wx.CANCEL):
+            style |= wx.OK
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        ids = []
+        for flag, btn_id, label in self._BUTTONS:
+            if style & flag:
+                btn = wx.Button(panel, btn_id, label)
+                btn.Bind(wx.EVT_BUTTON, lambda e, i=btn_id: self.EndModal(i))
+                btn_row.Add(btn, 0, wx.LEFT, GAP)
+                ids.append(btn_id)
+        if wx.ID_YES in ids:
+            self.default_id = wx.ID_NO if style & wx.NO_DEFAULT else wx.ID_YES
+        else:
+            self.default_id = wx.ID_CANCEL if style & wx.CANCEL_DEFAULT else wx.ID_OK
+        self.FindWindowById(self.default_id, self).SetDefault()
+        self.SetEscapeId(wx.ID_CANCEL if wx.ID_CANCEL in ids else wx.ID_NO if wx.ID_NO in ids else wx.ID_OK)
+
+        content = wx.BoxSizer(wx.VERTICAL)
+        content.Add(self.text, 1, wx.EXPAND | wx.BOTTOM, PAD)
+        content.Add(btn_row, 0, wx.ALIGN_RIGHT)
+        finish_dialog(self, panel, content)
+        self.text.SetFocus()
+        self.text.SetInsertionPoint(0)
+
+    def _OnTextKey(self, event):
+        # A multiline edit would swallow Enter; make it press the default button.
+        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and not event.HasAnyModifiers():
+            self.EndModal(self.default_id)
+        else:
+            event.Skip()
+
+
+_ID_TO_RESULT = {wx.ID_YES: wx.YES, wx.ID_NO: wx.NO, wx.ID_OK: wx.OK, wx.ID_CANCEL: wx.CANCEL}
+
+
+def message_box(message, caption="Message", style=wx.OK, parent=None):
+    """Drop-in for wx.MessageBox: same arguments, same return values (wx.YES,
+    wx.NO, wx.OK, wx.CANCEL), but the text is shown in a focused read-only
+    edit box. See MessageDialog."""
+    if parent is None:
+        parent = wx.GetActiveWindow()
+    dlg = MessageDialog(parent, message, caption, style)
+    try:
+        return _ID_TO_RESULT.get(dlg.ShowModal(), wx.CANCEL)
+    finally:
+        dlg.Destroy()
+
+
 def warn_hotkey_conflict(sounds, buses, hotkey, exclude_id=None):
     """If hotkey is a built-in shortcut or already bound to a sound or bus other
     than exclude_id, say so in a message box and return True. Hotkeys compare
@@ -53,7 +122,7 @@ def warn_hotkey_conflict(sounds, buses, hotkey, exclude_id=None):
     if not key:
         return False
     if key in RESERVED_HOTKEYS:
-        wx.MessageBox(
+        message_box(
             f"The hotkey '{hotkey}' is already used by OklyPlay for {RESERVED_HOTKEYS[key]}.\n"
             "Please choose a different hotkey.",
             "Hotkey Conflict", wx.OK | wx.ICON_WARNING
@@ -62,7 +131,7 @@ def warn_hotkey_conflict(sounds, buses, hotkey, exclude_id=None):
     owners = [("sound", s) for s in sounds] + [("bus", b) for b in buses]
     for kind, item in owners:
         if item.get("id") != exclude_id and item.get("hotkey", "").strip().lower() == key:
-            wx.MessageBox(
+            message_box(
                 f"The hotkey '{hotkey}' is already assigned to the {kind} '{item['name']}'.\n"
                 "Please choose a different hotkey.",
                 "Hotkey Conflict", wx.OK | wx.ICON_WARNING
@@ -340,12 +409,12 @@ class NewProjectDialog(wx.Dialog):
         path = self.loc_txt.GetValue().strip()
         
         if not name:
-            wx.MessageBox("Project name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("Project name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
             self.name_txt.SetFocus()
             return
             
         if not path or not os.path.isdir(path):
-            wx.MessageBox("Please select a valid directory path.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("Please select a valid directory path.", "Error", wx.OK | wx.ICON_ERROR)
             self.loc_txt.SetFocus()
             return
             
@@ -653,7 +722,7 @@ class SoundManagerDialog(wx.Dialog):
         msg = f"{verb} {imported} sound(s)."
         if skipped:
             msg += f" {skipped} file(s) could not be copied."
-        wx.MessageBox(msg, title, wx.OK | wx.ICON_INFORMATION)
+        message_box(msg, title, wx.OK | wx.ICON_INFORMATION)
 
     def _paste_from_clipboard(self):
         """Import audio files that were copied to the clipboard from Windows Explorer (Ctrl+C, then Ctrl+V)."""
@@ -662,7 +731,7 @@ class SoundManagerDialog(wx.Dialog):
         # Read file paths from the clipboard
         file_data = wx.FileDataObject()
         if not wx.TheClipboard.Open():
-            wx.MessageBox(
+            message_box(
                 "Could not open the clipboard.",
                 "Paste Error", wx.OK | wx.ICON_ERROR,
             )
@@ -672,7 +741,7 @@ class SoundManagerDialog(wx.Dialog):
         wx.TheClipboard.Close()
 
         if not got_data:
-            wx.MessageBox(
+            message_box(
                 "The clipboard does not contain any files.\n"
                 "Copy audio files in Explorer first, then press Ctrl+V here.",
                 "Nothing to Paste", wx.OK | wx.ICON_INFORMATION,
@@ -684,7 +753,7 @@ class SoundManagerDialog(wx.Dialog):
                        if os.path.splitext(p)[1].lower() in AUDIO_EXTS]
 
         if not audio_paths:
-            wx.MessageBox(
+            message_box(
                 f"No supported audio files found on the clipboard "
                 f"({len(all_paths)} non-audio file(s) ignored).\n"
                 f"Supported formats: {', '.join(sorted(AUDIO_EXTS))}",
@@ -735,7 +804,7 @@ class SoundManagerDialog(wx.Dialog):
         if sound is None:
             wx.Bell()
             return
-        answer = wx.MessageBox(
+        answer = message_box(
             f"Remove '{sound.get('name', '?')}' from the project?",
             "Confirm Remove",
             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
@@ -874,12 +943,12 @@ class AddEditSoundDialog(wx.Dialog):
         hotkey = self.hotkey_txt.GetValue().strip()
         
         if not name:
-            wx.MessageBox("Sound name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("Sound name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
             self.name_txt.SetFocus()
             return
             
         if not filepath:
-            wx.MessageBox("Please select an audio file.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("Please select an audio file.", "Error", wx.OK | wx.ICON_ERROR)
             self.file_txt.SetFocus()
             return
             
@@ -1052,7 +1121,7 @@ class AddEditBusDialog(wx.Dialog):
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
         if not name:
-            wx.MessageBox("Bus name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("Bus name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
             self.name_txt.SetFocus()
             return
             
@@ -1202,7 +1271,7 @@ class ManageBusesDialog(wx.Dialog):
     def OnEditBus(self, event):
         sel = self.bus_list.GetFirstSelected()
         if sel == wx.NOT_FOUND:
-            wx.MessageBox("Please select a bus to edit.", "Information", wx.OK | wx.ICON_INFORMATION)
+            message_box("Please select a bus to edit.", "Information", wx.OK | wx.ICON_INFORMATION)
             return
             
         bus_idx = self.bus_list.GetItemData(sel)
@@ -1220,17 +1289,17 @@ class ManageBusesDialog(wx.Dialog):
     def OnRemoveBus(self, event):
         sel = self.bus_list.GetFirstSelected()
         if sel == wx.NOT_FOUND:
-            wx.MessageBox("Please select a bus to remove.", "Information", wx.OK | wx.ICON_INFORMATION)
+            message_box("Please select a bus to remove.", "Information", wx.OK | wx.ICON_INFORMATION)
             return
             
         if len(self.project_data["buses"]) <= 1:
-            wx.MessageBox("You must keep at least one bus in the project.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("You must keep at least one bus in the project.", "Error", wx.OK | wx.ICON_ERROR)
             return
             
         bus_idx = self.bus_list.GetItemData(sel)
         bus_to_delete = self.project_data["buses"][bus_idx]
         
-        confirm = wx.MessageBox(
+        confirm = message_box(
             f"Are you sure you want to remove the bus '{bus_to_delete['name']}'?\n"
             f"Any sounds assigned to this bus will be reassigned to '{self.project_data['buses'][0]['name']}'.",
             "Confirm Delete",
@@ -1345,7 +1414,7 @@ class AddEditScenarioDialog(wx.Dialog):
     def OnOK(self, event):
         name = self.name_txt.GetValue().strip()
         if not name:
-            wx.MessageBox("Scenario name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
+            message_box("Scenario name cannot be empty.", "Error", wx.OK | wx.ICON_ERROR)
             self.name_txt.SetFocus()
             return
         event.Skip()
@@ -1467,7 +1536,7 @@ class EditScenariosDialog(wx.Dialog):
     def OnEditScenario(self, event):
         sel = self.scen_list.GetFirstSelected()
         if sel == wx.NOT_FOUND:
-            wx.MessageBox("Please select a scenario to edit.", "Information", wx.OK | wx.ICON_INFORMATION)
+            message_box("Please select a scenario to edit.", "Information", wx.OK | wx.ICON_INFORMATION)
             return
             
         scen_idx = self.scen_list.GetItemData(sel)
@@ -1485,13 +1554,13 @@ class EditScenariosDialog(wx.Dialog):
     def OnRemoveScenario(self, event):
         sel = self.scen_list.GetFirstSelected()
         if sel == wx.NOT_FOUND:
-            wx.MessageBox("Please select a scenario to remove.", "Information", wx.OK | wx.ICON_INFORMATION)
+            message_box("Please select a scenario to remove.", "Information", wx.OK | wx.ICON_INFORMATION)
             return
             
         scen_idx = self.scen_list.GetItemData(sel)
         scen = self.sound_data["scenarios"][scen_idx]
         
-        confirm = wx.MessageBox(
+        confirm = message_box(
             f"Are you sure you want to remove the scenario '{scen['name']}'?",
             "Confirm Delete",
             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING
@@ -1507,7 +1576,7 @@ class EditScenariosDialog(wx.Dialog):
     def OnSetAsDefault(self, event):
         sel = self.scen_list.GetFirstSelected()
         if sel == wx.NOT_FOUND:
-            wx.MessageBox("Please select a scenario to set as default.", "Information", wx.OK | wx.ICON_INFORMATION)
+            message_box("Please select a scenario to set as default.", "Information", wx.OK | wx.ICON_INFORMATION)
             return
             
         scen_idx = self.scen_list.GetItemData(sel)
@@ -1522,7 +1591,7 @@ class EditScenariosDialog(wx.Dialog):
         if scen.get("bus_id"):
             self.sound_data["bus_id"] = scen["bus_id"]
             
-        wx.MessageBox(
+        message_box(
             f"Scenario '{scen['name']}' settings copied as the default playback settings for this sound.",
             "Default Updated",
             wx.OK | wx.ICON_INFORMATION
@@ -1603,7 +1672,7 @@ class ProjectManagerDialog(wx.Dialog):
     def OnOpen(self, event):
         sel = self.projects_list.GetFirstSelected()
         if sel == wx.NOT_FOUND:
-            wx.MessageBox("Please select a project from the list.", "Info", wx.OK | wx.ICON_INFORMATION)
+            message_box("Please select a project from the list.", "Info", wx.OK | wx.ICON_INFORMATION)
             return
         idx = self.projects_list.GetItemData(sel)
         self.selected_project_path = self.recent_projects[idx]["path"]
@@ -1636,14 +1705,14 @@ class ProjectManagerDialog(wx.Dialog):
         # Only ever delete a folder that really is an OklyPlay project, so a
         # wrong or stale path in the list can never wipe some other folder.
         if not project_manager.is_project_dir(proj["path"]):
-            wx.MessageBox(
+            message_box(
                 f"The folder {proj['path']} does not contain an OklyPlay project, "
                 "so nothing was deleted. Use Remove from List to drop it from this list.",
                 "Not a Project Folder", wx.OK | wx.ICON_WARNING
             )
             return
 
-        confirm = wx.MessageBox(
+        confirm = message_box(
             f"Are you sure you want to delete all files for project '{proj['name']}'?\n"
             f"This will permanently delete the folder:\n{proj['path']}\n\nTHIS ACTION CANNOT BE UNDONE.",
             "Confirm Project Deletion",
@@ -1656,7 +1725,7 @@ class ProjectManagerDialog(wx.Dialog):
                 self.PopulateList()
                 Speech.speak(f"Deleted project {proj['name']}")
             except Exception as e:
-                wx.MessageBox(f"Failed to delete directory:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+                message_box(f"Failed to delete directory:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
                 
     def OnExitBtn(self, event):
         self.action = 'exit'

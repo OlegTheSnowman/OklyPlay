@@ -333,7 +333,7 @@ class TestUIDialogs(unittest.TestCase):
         dlg8.Destroy()
 
 
-    @patch('wx.MessageBox', return_value=wx.YES)
+    @patch('ui_dialogs.message_box', return_value=wx.YES)
     def test_delete_project_reports_no_error(self, mock_msg):
         # Deleting announces through Speech; a missing import used to turn a
         # successful delete into a "Failed to delete directory" error box.
@@ -347,7 +347,7 @@ class TestUIDialogs(unittest.TestCase):
         self.assertEqual(mock_msg.call_count, 1)  # only the confirmation
         mock_speak.assert_called_once_with("Deleted project Doomed")
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_set_scenario_as_default_keeps_all_settings(self, mock_msg):
         scen = {"name": "Low", "volume": 0.5, "fade_in_ms": 10, "fade_out_ms": 20,
                 "speed": 0.8, "pitch_semitones": -3.0, "loop": True, "bus_id": None}
@@ -361,7 +361,7 @@ class TestUIDialogs(unittest.TestCase):
             "speed": 0.8, "pitch_semitones": -3.0, "loop": True})
 
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_edit_sound_rejects_hotkey_owned_by_bus(self, mock_msg):
         buses = [{"id": "bus-1", "name": "Music", "hotkey": "F9"}]
         sounds = [{"id": "s1", "name": "Horn", "hotkey": "F1"}]
@@ -375,7 +375,7 @@ class TestUIDialogs(unittest.TestCase):
         event.Skip.assert_not_called()
         self.assertIn("the bus 'Music'", mock_msg.call_args[0][0])
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_hotkey_conflict_ignores_own_binding_and_blank(self, mock_msg):
         sounds = [{"id": "s1", "name": "Horn", "hotkey": "F1"}]
         self.assertFalse(ui_dialogs.warn_hotkey_conflict(sounds, [], "F1", exclude_id="s1"))
@@ -384,7 +384,7 @@ class TestUIDialogs(unittest.TestCase):
         self.assertEqual(mock_msg.call_count, 1)
 
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_sound_manager_import_copies_without_clobbering(self, mock_msg):
         proj = tempfile.mkdtemp()
         src_dir = tempfile.mkdtemp()
@@ -473,7 +473,7 @@ class TestMainFrame(unittest.TestCase):
         self.assertEqual(frame.settings["recent_projects"], [])
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_mainframe_load_project(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)
@@ -488,7 +488,7 @@ class TestMainFrame(unittest.TestCase):
         # Clean up
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_mainframe_load_project_failure(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         # Try to load non-existent path
@@ -498,7 +498,7 @@ class TestMainFrame(unittest.TestCase):
                 self.assertTrue(mock_manage.called)
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_volume_adjustments(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)
@@ -526,7 +526,7 @@ class TestMainFrame(unittest.TestCase):
         
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_volume_announcement_is_not_truncated(self, mock_msgbox):
         # 1.0 - 0.05 is 0.9499999..., which int() used to announce as 94.
         frame = ui_main.MainFrame(None)
@@ -537,7 +537,7 @@ class TestMainFrame(unittest.TestCase):
         self.mock_speak.assert_called_with("Volume 90 percent")
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_bus_switching(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)
@@ -587,7 +587,7 @@ class TestMainFrame(unittest.TestCase):
         
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_stop_commands(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)
@@ -604,7 +604,7 @@ class TestMainFrame(unittest.TestCase):
             
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     @patch('ui_dialogs.NewProjectDialog')
     def test_new_project_flow(self, mock_new_dlg_cls, mock_msgbox):
         frame = ui_main.MainFrame(None)
@@ -622,7 +622,7 @@ class TestMainFrame(unittest.TestCase):
         self.assertEqual(frame.project_data["name"], "Brand New Board")
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     @patch('ui_dialogs.AddEditSoundDialog')
     def test_add_sound_flow(self, mock_sound_dlg_cls, mock_msgbox):
         frame = ui_main.MainFrame(None)
@@ -661,7 +661,7 @@ class TestMainFrame(unittest.TestCase):
         
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.YES)
+    @patch('ui_dialogs.message_box', return_value=wx.YES)
     def test_remove_sound_flow(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)
@@ -689,7 +689,7 @@ class TestMainFrame(unittest.TestCase):
         self.assertEqual(len(frame.project_data["sounds"]), 0)
         frame.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     @patch('ui_dialogs.PreferencesDialog')
     def test_preferences_flow(self, mock_pref_dlg_cls, mock_msgbox):
         frame = ui_main.MainFrame(None)
@@ -785,7 +785,7 @@ class TestProjectManagerDialogActions(unittest.TestCase):
         self.assertEqual(dlg.projects_list.GetItemCount(), 1)
         dlg.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.YES)
+    @patch('ui_dialogs.message_box', return_value=wx.YES)
     def test_delete_action_confirmed(self, mock_msgbox):
         dlg = ui_dialogs.ProjectManagerDialog(None, self.recent)
         dlg.projects_list.Select(0)
@@ -1029,7 +1029,7 @@ class TestNewHotkeyAndPlaylistFeatures(unittest.TestCase):
         
         dlg.Destroy()
 
-    @patch('wx.MessageBox', return_value=wx.OK)
+    @patch('ui_dialogs.message_box', return_value=wx.OK)
     def test_mainframe_set_sound_hotkey_flow(self, mock_msgbox):
         frame = ui_main.MainFrame(None)
         frame.LoadProject(self.proj_path)
@@ -1376,7 +1376,7 @@ class TestDeleteOnlyProjects(unittest.TestCase):
     def setUpClass(cls):
         cls.app = wx.App(False)
 
-    @patch('wx.MessageBox', return_value=wx.YES)
+    @patch('ui_dialogs.message_box', return_value=wx.YES)
     def test_refuses_folder_without_project_json(self, mock_msg):
         folder = tempfile.mkdtemp()
         try:
@@ -1390,7 +1390,7 @@ class TestDeleteOnlyProjects(unittest.TestCase):
 
 
 class TestReservedHotkeys(unittest.TestCase):
-    @patch('wx.MessageBox')
+    @patch('ui_dialogs.message_box')
     def test_builtin_shortcuts_are_refused(self, mock_msg):
         for key in ("Ctrl+1", "alt+3", "Escape", "Ctrl+S", "Alt+S", "Space"):
             self.assertTrue(ui_dialogs.warn_hotkey_conflict([], [], key), key)
@@ -1470,6 +1470,39 @@ class TestUpdater(unittest.TestCase):
         self.assertEqual(open(os.path.join(folder, "OklyPlay.old.exe")).read(), "old")
         popen.assert_called_once_with([exe], close_fds=True)
         shutil.rmtree(folder)
+
+
+class TestMessageDialog(unittest.TestCase):
+    # Message boxes show their text in a focused read-only edit box, so a screen
+    # reader user can read it line by line; Tab then reaches the buttons.
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    def test_yes_no_dialog(self):
+        msg = "Remove 'Air horn'?\nThis cannot be undone."
+        dlg = ui_dialogs.MessageDialog(None, msg, "Confirm", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING)
+        self.assertEqual(dlg.text.GetValue(), msg)
+        self.assertFalse(dlg.text.IsEditable())
+        self.assertTrue(dlg.text.IsMultiLine())
+        self.assertIsNotNone(dlg.FindWindowById(wx.ID_YES, dlg))
+        self.assertIsNotNone(dlg.FindWindowById(wx.ID_NO, dlg))
+        self.assertIsNone(dlg.FindWindowById(wx.ID_OK, dlg))
+        self.assertEqual(dlg.default_id, wx.ID_NO)
+        self.assertEqual(dlg.GetEscapeId(), wx.ID_NO)
+        dlg.Destroy()
+
+    def test_plain_message_gets_ok(self):
+        dlg = ui_dialogs.MessageDialog(None, "Saved.", "Info", wx.ICON_INFORMATION)
+        self.assertIsNotNone(dlg.FindWindowById(wx.ID_OK, dlg))
+        self.assertEqual(dlg.default_id, wx.ID_OK)
+        dlg.Destroy()
+
+    def test_returns_messagebox_codes(self):
+        with patch.object(ui_dialogs.MessageDialog, "ShowModal", return_value=wx.ID_YES):
+            self.assertEqual(ui_dialogs.message_box("Sure?", "Q", wx.YES_NO), wx.YES)
+        with patch.object(ui_dialogs.MessageDialog, "ShowModal", return_value=wx.ID_OK):
+            self.assertEqual(ui_dialogs.message_box("Done", "Info"), wx.OK)
 
 
 if __name__ == "__main__":

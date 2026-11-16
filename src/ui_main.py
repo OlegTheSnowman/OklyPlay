@@ -385,7 +385,7 @@ class MainFrame(wx.Frame):
             self.PrepareVariants()
             
         except Exception as e:
-            wx.MessageBox(f"Failed to load project from {path}:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+            ui_dialogs.message_box(f"Failed to load project from {path}:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
             if "recent_projects" in self.settings:
                 self.settings["recent_projects"] = [
                     p for p in self.settings["recent_projects"]
@@ -654,7 +654,7 @@ class MainFrame(wx.Frame):
                 project_manager.create_project(proj_path, proj_name)
                 self.LoadProject(proj_path)
             except Exception as e:
-                wx.MessageBox(f"Failed to create project:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+                ui_dialogs.message_box(f"Failed to create project:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
         dlg.Destroy()
 
     def OnOpenProject(self, event):
@@ -671,11 +671,11 @@ class MainFrame(wx.Frame):
             project_manager.save_project(self.project_dir, self.project_data)
             Speech.speak("Project saved")
         except Exception as e:
-            wx.MessageBox(f"Failed to save project:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+            ui_dialogs.message_box(f"Failed to save project:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
 
     def OnExportProject(self, event):
         if not self.project_data or not self.project_dir:
-            wx.MessageBox("No project loaded to export.", "Error", wx.OK | wx.ICON_ERROR)
+            ui_dialogs.message_box("No project loaded to export.", "Error", wx.OK | wx.ICON_ERROR)
             return
             
         dlg = wx.FileDialog(
@@ -690,9 +690,9 @@ class MainFrame(wx.Frame):
             try:
                 project_manager.export_project(self.project_dir, zip_path)
                 Speech.speak("Project exported successfully")
-                wx.MessageBox("Project exported successfully!", "Success", wx.OK | wx.ICON_INFORMATION)
+                ui_dialogs.message_box("Project exported successfully!", "Success", wx.OK | wx.ICON_INFORMATION)
             except Exception as e:
-                wx.MessageBox(f"Export failed:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+                ui_dialogs.message_box(f"Export failed:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
         dlg.Destroy()
 
     def OnImportProject(self, event):
@@ -729,7 +729,7 @@ class MainFrame(wx.Frame):
             project_manager.import_project(zip_path, dest_dir)
             self.LoadProject(dest_dir)
         except Exception as e:
-            wx.MessageBox(f"Import failed:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+            ui_dialogs.message_box(f"Import failed:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
 
     def OnPreferences(self, event):
         if not self.audio_engine:
@@ -772,7 +772,7 @@ class MainFrame(wx.Frame):
     # --- Edit Menu Handlers ---
     def OnAddSound(self, event):
         if not self.project_data:
-            wx.MessageBox("Please create or open a project first.", "Error", wx.OK | wx.ICON_ERROR)
+            ui_dialogs.message_box("Please create or open a project first.", "Error", wx.OK | wx.ICON_ERROR)
             return
             
         dlg = ui_dialogs.AddEditSoundDialog(self, self.project_data["buses"], existing_sounds=self.project_data["sounds"])
@@ -794,7 +794,7 @@ class MainFrame(wx.Frame):
                 self.PrepareVariants()
                 Speech.speak(f"Added {sound_data['name']}")
             except Exception as e:
-                wx.MessageBox(f"Failed to import sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+                ui_dialogs.message_box(f"Failed to import sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
         dlg.Destroy()
 
     def OnSoundManager(self, event):
@@ -804,7 +804,7 @@ class MainFrame(wx.Frame):
         Changes are written back to project_data and saved when the dialog closes.
         """
         if not self.project_data:
-            wx.MessageBox("Please create or open a project first.", "Error", wx.OK | wx.ICON_ERROR)
+            ui_dialogs.message_box("Please create or open a project first.", "Error", wx.OK | wx.ICON_ERROR)
             return
 
         dlg = ui_dialogs.SoundManagerDialog(self, self.project_data, self.project_dir)
@@ -815,7 +815,7 @@ class MainFrame(wx.Frame):
         try:
             project_manager.save_project(self.project_dir, self.project_data)
         except Exception as e:
-            wx.MessageBox(f"Could not save project after Sound Manager changes:\n{e}",
+            ui_dialogs.message_box(f"Could not save project after Sound Manager changes:\n{e}",
                           "Warning", wx.OK | wx.ICON_WARNING)
 
         self.RefreshSoundsList()
@@ -865,7 +865,7 @@ class MainFrame(wx.Frame):
                 self.PrepareVariants()
                 Speech.speak(f"Updated {updated_data['name']}")
             except Exception as e:
-                wx.MessageBox(f"Failed to update sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+                ui_dialogs.message_box(f"Failed to update sound:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
         dlg.Destroy()
 
     def OnSetSoundHotkey(self, event):
@@ -897,7 +897,7 @@ class MainFrame(wx.Frame):
         if sound is None:
             return
         
-        confirm = wx.MessageBox(
+        confirm = ui_dialogs.message_box(
             f"Are you sure you want to remove the sound '{sound['name']}'?",
             "Confirm Delete",
             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING
@@ -1327,22 +1327,22 @@ class MainFrame(wx.Frame):
         if error:
             logger.info("Update check failed: %s", error)
             if manual:
-                wx.MessageBox(error, "Update Check Failed", wx.OK | wx.ICON_WARNING)
+                ui_dialogs.message_box(error, "Update Check Failed", wx.OK | wx.ICON_WARNING)
             return
         if not updater.is_newer(release["version"]):
             if manual:
-                wx.MessageBox(f"You have the latest version, {__version__}.", "No Updates", wx.OK | wx.ICON_INFORMATION)
+                ui_dialogs.message_box(f"You have the latest version, {__version__}.", "No Updates", wx.OK | wx.ICON_INFORMATION)
             return
 
         notes = release["notes"][:1500] or "No release notes."
         header = f"OklyPlay {release['version']} is available. You have {__version__}."
         if not updater.is_frozen() or not release["url"]:
             # Running from source (or no exe attached): point at the release page
-            if wx.MessageBox(f"{header}\n\n{notes}\n\nOpen the release page?", "Update Available",
+            if ui_dialogs.message_box(f"{header}\n\n{notes}\n\nOpen the release page?", "Update Available",
                              wx.YES_NO | wx.ICON_INFORMATION) == wx.YES:
                 wx.LaunchDefaultBrowser(release["page"])
             return
-        if wx.MessageBox(f"{header}\n\n{notes}\n\nDownload and install it now? OklyPlay will restart.",
+        if ui_dialogs.message_box(f"{header}\n\n{notes}\n\nDownload and install it now? OklyPlay will restart.",
                          "Update Available", wx.YES_NO | wx.ICON_INFORMATION) == wx.YES:
             self._DownloadUpdate(release)
 
@@ -1378,7 +1378,7 @@ class MainFrame(wx.Frame):
             dlg.Destroy()
             if error:
                 if not state["cancel"]:
-                    wx.MessageBox(error, "Update Failed", wx.OK | wx.ICON_ERROR)
+                    ui_dialogs.message_box(error, "Update Failed", wx.OK | wx.ICON_ERROR)
                 return
             try:
                 if self.project_data and self.project_dir:
@@ -1390,7 +1390,7 @@ class MainFrame(wx.Frame):
                     self.audio_engine._open_stream()  # keep the soundboard usable
                 except Exception:
                     pass
-                wx.MessageBox(f"Could not install the update:\n{e}", "Update Failed", wx.OK | wx.ICON_ERROR)
+                ui_dialogs.message_box(f"Could not install the update:\n{e}", "Update Failed", wx.OK | wx.ICON_ERROR)
                 return
             Speech.speak("Update installed. Restarting OklyPlay.")
             self.Close()
@@ -1399,7 +1399,7 @@ class MainFrame(wx.Frame):
 
     # --- Help & About Dialog ---
     def OnAbout(self, event):
-        wx.MessageBox(
+        ui_dialogs.message_box(
             f"OklyPlay Soundboard\nVersion {__version__}\n\nA screenreader-accessible soundboard for streamers.\n"
             "Built with wxPython, sounddevice, soundfile, numpy, and accessible_output2.",
             "About OklyPlay",
