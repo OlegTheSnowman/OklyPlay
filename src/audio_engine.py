@@ -150,13 +150,14 @@ class LoadedSound:
 
 class Channel:
     """Represents a single active sound playback instance with fade capabilities."""
-    def __init__(self, sound_data, volume, fade_in_ms, fade_out_ms, loop, bus_id, sample_rate, sound_name=""):
+    def __init__(self, sound_data, volume, fade_in_ms, fade_out_ms, loop, bus_id, sample_rate, sound_name="", sound_id=None):
         self.audio_data = sound_data
         self.target_volume = float(volume)
         self.loop = bool(loop)
         self.bus_id = bus_id
         self.sample_rate = sample_rate
         self.sound_name = sound_name
+        self.sound_id = sound_id
         
         self.position = 0
         self.is_done = False
@@ -376,7 +377,7 @@ class AudioEngine:
         variant is rendered twice."""
         self._get_loaded(filepath).get_data_for_pitch_and_speed(pitch_semitones, speed)
 
-    def play(self, filepath, scenario, bus_id, bus_mode, exclusive_bus_ids=None, crossfade_ms=500, sound_name=""):
+    def play(self, filepath, scenario, bus_id, bus_mode, exclusive_bus_ids=None, crossfade_ms=500, sound_name="", sound_id=None):
         """Plays a sound on a bus with a given scenario preset."""
         loaded_sound = self._get_loaded(filepath)
         pitch_semitones = scenario.get('pitch_semitones', 0.0)
@@ -407,7 +408,8 @@ class AudioEngine:
             loop=scenario.get('loop', False),
             bus_id=bus_id,
             sample_rate=self.sample_rate,
-            sound_name=sound_name
+            sound_name=sound_name,
+            sound_id=sound_id
         )
         
         # Copy-on-write list assignment

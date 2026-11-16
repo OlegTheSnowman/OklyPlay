@@ -7,6 +7,7 @@ import threading
 from accessible_speech import Speech
 from audio_engine import AudioEngine
 import project_manager
+import branding
 import ui_dialogs
 import updater
 from version import __version__
@@ -80,17 +81,29 @@ class MainFrame(wx.Frame):
 
     def InitUI(self):
         pad, gap = ui_dialogs.PAD, ui_dialogs.GAP
+        self.SetIcons(branding.icon_bundle())
+
+        self.root = wx.Panel(self)
+        root_sizer = wx.BoxSizer(wx.VERTICAL)
+        root_sizer.Add(self._BuildHeader(self.root), 0, wx.EXPAND)
 
         # Create Splitter Window
-        self.splitter = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE | wx.SP_NOBORDER)
+        self.splitter = wx.SplitterWindow(self.root, style=wx.SP_LIVE_UPDATE | wx.SP_NOBORDER)
         self.splitter.SetMinimumPaneSize(self.FromDIP(160))
 
-        # Left Panel (Buses)
+        # Left Panel (Buses). A one-column list rather than a list box, so each
+        # bus can carry a colour marker; the mode is a second column NVDA reads
+        # after the name ("Music, exclusive").
         self.left_panel = wx.Panel(self.splitter)
         left_sizer = wx.BoxSizer(wx.VERTICAL)
         left_lbl = ui_dialogs.heading(self.left_panel, "Buses")
-        self.buses_list = wx.ListBox(self.left_panel, style=wx.LB_SINGLE)
+        self.buses_list = wx.ListCtrl(self.left_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_NO_HEADER)
         ui_dialogs.label_control(self.buses_list, "Buses")
+        self.buses_list.InsertColumn(0, "Bus")
+        self.buses_list.InsertColumn(1, "Mode")
+        self._bus_images = wx.ImageList(*self._IconSize())
+        self.buses_list.SetImageList(self._bus_images, wx.IMAGE_LIST_SMALL)
+        self._bus_image_ids = {}
         left_sizer.Add(left_lbl, 0, wx.LEFT | wx.TOP | wx.BOTTOM, pad)
         left_sizer.Add(self.buses_list, 1, wx.EXPAND | wx.LEFT | wx.BOTTOM, pad)
         self.left_panel.SetSizer(left_sizer)
@@ -118,12 +131,26 @@ class MainFrame(wx.Frame):
         self.sounds_list.InsertColumn(0, "Name")
         self.sounds_list.InsertColumn(1, "Hotkey")
         self.sounds_list.InsertColumn(2, "Scenarios")
+        # Playing sounds get a speaker icon and bold text. Visual only: the item
+        # text does not change, so the screen reader is not interrupted.
+        icon = self._IconSize()
+        self._sound_images = wx.ImageList(*icon)
+        self._img_blank = self._sound_images.Add(branding.blank(icon[0]))
+        self._img_playing = self._sound_images.Add(branding.speaker(branding.ACCENT, icon[0]))
+        self.sounds_list.SetImageList(self._sound_images, wx.IMAGE_LIST_SMALL)
+        self._playing_ids = set()
 
         right_sizer.Add(self.sounds_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, pad)
         self.right_panel.SetSizer(right_sizer)
 
         # Split layout
         self.splitter.SplitVertically(self.left_panel, self.right_panel, self.FromDIP(220))
+        root_sizer.Add(self.splitter, 1, wx.EXPAND)
+
+        self.welcome = self._BuildWelcome(self.root)
+        root_sizer.Add(self.welcome, 1, wx.EXPAND)
+        self.root.SetSizer(root_sizer)
+        self._ShowWelcome(True)
 
         # Create Menu Bar
         self.CreateMenuBar()
@@ -134,12 +161,99 @@ class MainFrame(wx.Frame):
         self.SetMinSize(self.FromDIP(wx.Size(640, 420)))
         
         # Bind events
-        self.buses_list.Bind(wx.EVT_LISTBOX, self.OnBusSelected)
+        self.buses_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.OnBusSelected)
         self.sounds_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnSoundActivated)
         self.sounds_list.Bind(wx.EVT_KEY_DOWN, self.OnSoundsListKeyDown)
         
-        # Set default focus
-        self.buses_list.SetFocus()
+        self.buses_list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.OnBusDeselected)
+        self.UpdateStatusBar()
+
+    def _IconSize(self):
+        side = self.FromDIP(16)
+        return side, side
+
+    def _BuildHeader(self, parent):
+        """Indigo strip with the logo, the app name and the open project. Visual
+        only: it holds no focusable controls, and the window title already
+        carries the project name for screen readers."""
+        header = wx.Panel(parent)
+        header.SetBackgroundColour(branding.ACCENT)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        logo = wx.StaticBitmap(header, bitmap=branding.draw_logo(self.FromDIP(28)))
+        name = wx.StaticText(header, label="OklyPlay")
+        font = name.GetFont()
+        font.SetWeight(wx.FONTWEIGHT_BOLD)
+        font.SetPointSize(font.GetPointSize() + 4)
+        name.SetFont(font)
+        name.SetForegroundColour(branding.ACCENT_TEXT)
+        self.header_project = wx.StaticText(header, label="")
+        self.header_project.SetForegroundColour(branding.ACCENT_SUBTLE)
+        pad = ui_dialogs.PAD
+        row.Add(logo, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, pad)
+        row.Add(name, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, ui_dialogs.GAP)
+        row.AddStretchSpacer()
+        row.Add(self.header_project, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, pad)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(row, 1, wx.EXPAND | wx.TOP | wx.BOTTOM, ui_dialogs.GAP)
+        header.SetSizer(outer)
+        return header
+
+    def _BuildWelcome(self, parent):
+        """What the window shows while no project is open."""
+        panel = wx.Panel(parent)
+        col = wx.BoxSizer(wx.VERTICAL)
+        logo = wx.StaticBitmap(panel, bitmap=branding.draw_logo(self.FromDIP(72)))
+        title = ui_dialogs.heading(panel, "Welcome to OklyPlay", size_delta=6)
+        text = wx.StaticText(panel, label="Create a project or open one to start playing sounds.")
+        text.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.welcome_buttons = []
+        for label, handler in (("&New Project...", self.OnNewProject),
+                               ("&Open Project...", self.OnOpenProject),
+                               ("&Recent Projects...", self.OnManageProjects)):
+            btn = wx.Button(panel, label=label)
+            btn.SetMinSize(self.FromDIP(wx.Size(150, 36)))
+            btn.Bind(wx.EVT_BUTTON, lambda e, h=handler: h(None))
+            self.welcome_buttons.append(btn)
+            buttons.Add(btn, 0, wx.LEFT | wx.RIGHT, ui_dialogs.GAP // 2)
+        col.AddStretchSpacer(2)
+        col.Add(logo, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.BOTTOM, ui_dialogs.PAD)
+        col.Add(title, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.BOTTOM, ui_dialogs.GAP)
+        col.Add(text, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.BOTTOM, ui_dialogs.PAD * 2)
+        col.Add(buttons, 0, wx.ALIGN_CENTER_HORIZONTAL)
+        col.AddStretchSpacer(3)
+        panel.SetSizer(col)
+        return panel
+
+    def _ShowWelcome(self, show):
+        if self.welcome.IsShown() == show and self.splitter.IsShown() != show:
+            return
+        self.welcome.Show(show)
+        self.splitter.Show(not show)
+        self.root.Layout()
+        # Focus must not stay on a control that was just hidden
+        target = self.welcome_buttons[0] if show else self.buses_list
+        wx.CallAfter(lambda: target and target.IsShownOnScreen() and target.SetFocus())
+
+    def _UpdatePlayingMarkers(self):
+        """Speaker icon and bold text on the rows of sounds that are playing."""
+        playing = {ch.sound_id for ch in self.audio_engine._active_channels if not ch.is_done}
+        changed = playing ^ self._playing_ids
+        if not changed:
+            return
+        self._playing_ids = playing
+        # Touch only rows whose state changed, so the focused row is not redrawn
+        # (and possibly re-announced) every time some other sound starts or stops.
+        for row, sound in enumerate(self.current_bus_sounds):
+            if sound["id"] in changed:
+                self._MarkRow(row, sound["id"] in playing)
+
+    def _MarkRow(self, row, playing):
+        self.sounds_list.SetItemImage(row, self._img_playing if playing else self._img_blank)
+        font = self.sounds_list.GetFont()
+        if playing:
+            font.SetWeight(wx.FONTWEIGHT_BOLD)
+        self.sounds_list.SetItemFont(row, font)
 
     def CreateMenuBar(self):
         menubar = wx.MenuBar()
@@ -336,11 +450,11 @@ class MainFrame(wx.Frame):
                 self.OnNewProject(None)
             elif action == 'browse':
                 self.OnOpenProject(None)
-        else:
-            # Dialog cancelled or Exit App selected
-            if dlg.action == 'exit' or self.project_data is None:
-                self.Close()
-                
+        elif dlg.action == 'exit':
+            self.Close()
+        # A plain Cancel or Escape keeps the app open; with no project loaded the
+        # welcome screen offers New, Open and Recent again.
+
         dlg.Destroy()
 
     def LoadProject(self, path):
@@ -443,19 +557,31 @@ class MainFrame(wx.Frame):
             self.audio_engine.set_bus_duck_factor(bus["id"], bus.get("duck_factor", 1.0))
             self.audio_engine.set_bus_duckable(bus["id"], bus.get("duckable", False))
 
+    def _BusImage(self, idx):
+        """Colour marker for the bus at idx, one palette colour per position."""
+        colour = branding.BUS_COLOURS[idx % len(branding.BUS_COLOURS)]
+        if colour not in self._bus_image_ids:
+            self._bus_image_ids[colour] = self._bus_images.Add(branding.dot(colour, self._IconSize()[0]))
+        return self._bus_image_ids[colour]
+
     def RefreshBusesList(self):
-        self.buses_list.Clear()
-        if not self.project_data or not self.project_data.get("buses"):
-            return
-            
-        selected_idx = 0
-        for idx, bus in enumerate(self.project_data["buses"]):
-            self.buses_list.Append(bus["name"])
-            if bus["id"] == self.selected_bus_id:
-                selected_idx = idx
-                
-        if self.buses_list.GetCount() > 0:
-            self.buses_list.SetSelection(selected_idx)
+        self._refreshing_buses = True
+        try:
+            self.buses_list.DeleteAllItems()
+            if not self.project_data or not self.project_data.get("buses"):
+                return
+
+            selected_idx = 0
+            for idx, bus in enumerate(self.project_data["buses"]):
+                self.buses_list.InsertItem(idx, bus["name"], self._BusImage(idx))
+                self.buses_list.SetItem(idx, 1, bus.get("mode", "layered").capitalize())
+                if bus["id"] == self.selected_bus_id:
+                    selected_idx = idx
+            ui_dialogs.polish_list(self.buses_list)
+            self.buses_list.Select(selected_idx)
+            self.buses_list.Focus(selected_idx)
+        finally:
+            self._refreshing_buses = False
 
     def RefreshSoundsList(self):
         self.sounds_list.DeleteAllItems()
@@ -483,6 +609,7 @@ class MainFrame(wx.Frame):
             scen_count = len(sound.get("scenarios", []))
             self.sounds_list.SetItem(idx, 2, f"{scen_count} scenario" + ("" if scen_count == 1 else "s"))
             self.sounds_list.SetItemData(idx, idx)
+            self._MarkRow(idx, sound["id"] in self._playing_ids)
         ui_dialogs.polish_list(self.sounds_list)
 
     def OnSearchChanged(self, event):
@@ -619,8 +746,10 @@ class MainFrame(wx.Frame):
         self.right_panel.Layout()
 
     def UpdateStatusBar(self):
+        self._ShowWelcome(not self.project_data)
         if not self.project_data:
             self._SetIfChanged(self.SetTitle, self.GetTitle, "OklyPlay Soundboard")
+            self._SetIfChanged(self.header_project.SetLabel, self.header_project.GetLabel, "")
             self.status_bar.SetStatusText("No project loaded", 0)
             for field in (1, 2, 3):
                 self.status_bar.SetStatusText("", field)
@@ -628,7 +757,11 @@ class MainFrame(wx.Frame):
 
         # Only touch the title and heading when they change: rewriting a window title
         # can make a screen reader announce it again on every status refresh.
-        self._SetIfChanged(self.SetTitle, self.GetTitle, f"{self.project_data.get('name', 'Unnamed')} - OklyPlay Soundboard")
+        project_name = self.project_data.get('name', 'Unnamed')
+        self._SetIfChanged(self.SetTitle, self.GetTitle, f"{project_name} - OklyPlay Soundboard")
+        if self.header_project.GetLabel() != project_name:
+            self.header_project.SetLabel(project_name)
+            self.header_project.GetParent().Layout()
         bus = self.GetSelectedBus()
         if bus:
             self.status_bar.SetStatusText(f"Bus: {bus['name']} ({bus['mode']})", 0)
@@ -974,14 +1107,36 @@ class MainFrame(wx.Frame):
 
     # --- Bus Navigation and Shortcut Selection ---
     def OnBusSelected(self, event):
-        """Triggered when the user clicks or arrows to a different bus in the ListBox."""
-        sel = self.buses_list.GetSelection()
+        """Triggered when the user clicks or arrows to a different bus in the list."""
+        if getattr(self, "_refreshing_buses", False) or not self.project_data:
+            return
+        sel = self.buses_list.GetFirstSelected()
         if sel != wx.NOT_FOUND:
             bus = self.project_data["buses"][sel]
             self.selected_bus_id = bus["id"]
             self.search_ctrl.ChangeValue("")
             self.RefreshSoundsList()
             self.UpdateStatusBar()
+
+    def OnBusDeselected(self, event):
+        """A list control, unlike the old list box, lets Ctrl+Space or a click on
+        empty space clear the selection. Put it back on the current bus."""
+        if getattr(self, "_refreshing_buses", False) or not self.project_data:
+            return
+        wx.CallAfter(self._ReselectBus)
+
+    def _ReselectBus(self):
+        if not self or self.buses_list.GetFirstSelected() != wx.NOT_FOUND:
+            return
+        ids = [b["id"] for b in self.project_data.get("buses", [])] if self.project_data else []
+        if self.selected_bus_id in ids:
+            idx = ids.index(self.selected_bus_id)
+            self._refreshing_buses = True
+            try:
+                self.buses_list.Select(idx)
+                self.buses_list.Focus(idx)
+            finally:
+                self._refreshing_buses = False
 
     def OnSwitchBusHotkey(self, event):
         """Triggered via Ctrl+1..9. Switches the selected bus and auto-focuses the Sounds list."""
@@ -1084,7 +1239,8 @@ class MainFrame(wx.Frame):
                 bus_mode, 
                 exclusive_bus_ids=exclusive_bus_ids, 
                 crossfade_ms=crossfade_ms, 
-                sound_name=sound["name"]
+                sound_name=sound["name"],
+                sound_id=sound["id"]
             )
             self.UpdateStatusBar()
             return ch
@@ -1131,6 +1287,7 @@ class MainFrame(wx.Frame):
         """Runs regularly to clean up done streams and keep active stream counts updated in the status bar."""
         if self.audio_engine:
             done_channels = self.audio_engine.cleanup_done_channels()
+            self._UpdatePlayingMarkers()
             if done_channels:
                 self.UpdateStatusBar()
                 

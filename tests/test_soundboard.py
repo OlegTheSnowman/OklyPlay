@@ -1472,6 +1472,43 @@ class TestUpdater(unittest.TestCase):
         shutil.rmtree(folder)
 
 
+class TestWelcomeAndProjectManager(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = wx.App(False)
+
+    def setUp(self):
+        self.patchers = [patch('sounddevice.OutputStream'), patch('accessible_speech.Speech.speak'),
+                         patch.object(ui_main.MainFrame, "LoadSettingsAndLastProject",
+                                      lambda self: setattr(self, "settings", {"recent_projects": []})),
+                         patch.object(ui_main.MainFrame, "SaveSettings", lambda self: None)]
+        for p in self.patchers:
+            p.start()
+        self.frame = ui_main.MainFrame(None)
+
+    def tearDown(self):
+        self.frame.Destroy()
+        for p in self.patchers:
+            p.stop()
+
+    def test_welcome_shown_without_project(self):
+        self.assertTrue(self.frame.welcome.IsShown())
+        self.assertFalse(self.frame.splitter.IsShown())
+
+    @patch('ui_dialogs.ProjectManagerDialog')
+    def test_cancel_keeps_app_open(self, mock_cls):
+        # Cancelling Recent Projects from the welcome screen used to close the app.
+        dlg = MagicMock(action=None, recent_projects=[])
+        dlg.ShowModal.return_value = wx.ID_CANCEL
+        mock_cls.return_value = dlg
+        with patch.object(self.frame, "Close") as close:
+            self.frame.OnManageProjects(None)
+            close.assert_not_called()
+            dlg.action = 'exit'
+            self.frame.OnManageProjects(None)
+            close.assert_called_once()
+
+
 class TestMessageDialog(unittest.TestCase):
     # Message boxes show their text in a focused read-only edit box, so a screen
     # reader user can read it line by line; Tab then reaches the buttons.
