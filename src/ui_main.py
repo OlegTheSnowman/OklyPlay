@@ -192,7 +192,8 @@ class MainFrame(wx.Frame):
         scen_menu = wx.Menu()
         for i in range(1, 10):
             scen_menu.Append(ID_SCENARIO_BASE + i, f"Play Scenario {i}\tAlt+{i}")
-        menubar.Append(scen_menu, "&Scenarios")
+        # Alt+C, since Alt+S is the Sound Manager shortcut
+        menubar.Append(scen_menu, "S&cenarios")
         
         # Help Menu
         help_menu = wx.Menu()

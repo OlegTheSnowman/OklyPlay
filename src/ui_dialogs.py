@@ -31,12 +31,34 @@ def create_dialog_buttons(panel, ok_label="OK", cancel_label="Cancel"):
     return btn_sizer, ok_btn, cancel_btn
 
 
+# Shortcuts the main window already uses. A sound or bus bound to one of these
+# would fight the built-in command, so they are refused.
+RESERVED_HOTKEYS = {
+    "ctrl+n": "New Project", "ctrl+o": "Open Project", "ctrl+s": "Save Project",
+    "ctrl+m": "Manage Projects", "ctrl+i": "Add Sound", "f2": "Edit Sound",
+    "alt+s": "Sound Manager", "alt+k": "Set Hotkey", "ctrl+e": "Edit Scenarios",
+    "ctrl+b": "Manage Buses", "escape": "Stop Current Bus", "alt+escape": "Stop All Sounds",
+    "space": "Play Selected Sound", "enter": "Play Selected Sound",
+    "alt+f4": "Exit",
+    **{f"ctrl+{i}": f"Switch to Bus {i}" for i in range(1, 10)},
+    **{f"alt+{i}": f"Play Scenario {i}" for i in range(1, 10)},
+}
+
+
 def warn_hotkey_conflict(sounds, buses, hotkey, exclude_id=None):
-    """If hotkey is already bound to a sound or bus other than exclude_id, say so
-    in a message box and return True. Hotkeys compare case-insensitively."""
+    """If hotkey is a built-in shortcut or already bound to a sound or bus other
+    than exclude_id, say so in a message box and return True. Hotkeys compare
+    case-insensitively."""
     key = hotkey.strip().lower()
     if not key:
         return False
+    if key in RESERVED_HOTKEYS:
+        wx.MessageBox(
+            f"The hotkey '{hotkey}' is already used by OklyPlay for {RESERVED_HOTKEYS[key]}.\n"
+            "Please choose a different hotkey.",
+            "Hotkey Conflict", wx.OK | wx.ICON_WARNING
+        )
+        return True
     owners = [("sound", s) for s in sounds] + [("bus", b) for b in buses]
     for kind, item in owners:
         if item.get("id") != exclude_id and item.get("hotkey", "").strip().lower() == key:
