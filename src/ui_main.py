@@ -3,10 +3,12 @@ import wx
 import os
 import json
 import random
+import threading
 from accessible_speech import Speech
 from audio_engine import AudioEngine
 import project_manager
 import ui_dialogs
+import updater
 from version import __version__
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ ID_MASTER_VOL_DOWN = wx.ID_HIGHEST + 13
 ID_MANAGE_PROJECTS = wx.ID_HIGHEST + 14
 ID_SET_SOUND_HOTKEY = wx.ID_HIGHEST + 15
 ID_SOUND_MANAGER = wx.ID_HIGHEST + 16
+ID_CHECK_UPDATES = wx.ID_HIGHEST + 17
 
 ID_BUS_BASE = wx.ID_HIGHEST + 100  # ID_BUS_BASE + 1 to 9
 ID_SCENARIO_BASE = wx.ID_HIGHEST + 200  # ID_SCENARIO_BASE + 1 to 9
@@ -197,6 +200,7 @@ class MainFrame(wx.Frame):
         
         # Help Menu
         help_menu = wx.Menu()
+        help_menu.Append(ID_CHECK_UPDATES, "Check for &Updates...")
         help_menu.Append(wx.ID_ABOUT, "&About...")
         menubar.Append(help_menu, "&Help")
         
@@ -229,6 +233,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnMasterVolDown, id=ID_MASTER_VOL_DOWN)
         
         self.Bind(wx.EVT_MENU, self.OnAbout, id=wx.ID_ABOUT)
+        self.Bind(wx.EVT_MENU, self.OnCheckUpdates, id=ID_CHECK_UPDATES)
         
         # Bind Ctrl+1..9 Switch Bus
         for i in range(1, 10):
@@ -297,6 +302,10 @@ class MainFrame(wx.Frame):
 
     def LoadSettingsAndLastProject(self):
         self.LoadSettings()
+        updater.cleanup_old_exe()
+        if self.settings.get("check_updates", True):
+            # A few seconds in, so the announcement does not talk over "Project loaded"
+            wx.CallLater(4000, self.CheckForUpdates, False)
         project_to_load = self.settings.get("last_project_path")
         
         if project_to_load and os.path.exists(project_to_load):
@@ -1242,6 +1251,104 @@ class MainFrame(wx.Frame):
         else:
             playlist["active"] = False
             Speech.speak(f"Failed to play next sound {sound['name']}. Playlist stopped.")
+
+    # --- Updates ---
+    def OnCheckUpdates(self, event):
+        self.CheckForUpdates(manual=True)
+
+    def CheckForUpdates(self, manual):
+        """Ask GitHub for the latest release on a worker thread. A manual check
+        reports every outcome; the startup check speaks only when there is news."""
+        if getattr(self, "_update_busy", False):
+            return
+        self._update_busy = True
+        if manual:
+            Speech.speak("Checking for updates")
+
+        def work():
+            try:
+                result, error = updater.fetch_latest(), None
+            except updater.UpdateError as e:
+                result, error = None, str(e)
+            wx.CallAfter(self._OnUpdateInfo, result, error, manual)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _OnUpdateInfo(self, release, error, manual):
+        self._update_busy = False
+        if not self:
+            return
+        if error:
+            logger.info("Update check failed: %s", error)
+            if manual:
+                wx.MessageBox(error, "Update Check Failed", wx.OK | wx.ICON_WARNING)
+            return
+        if not updater.is_newer(release["version"]):
+            if manual:
+                wx.MessageBox(f"You have the latest version, {__version__}.", "No Updates", wx.OK | wx.ICON_INFORMATION)
+            return
+
+        notes = release["notes"][:1500] or "No release notes."
+        header = f"OklyPlay {release['version']} is available. You have {__version__}."
+        if not updater.is_frozen() or not release["url"]:
+            # Running from source (or no exe attached): point at the release page
+            if wx.MessageBox(f"{header}\n\n{notes}\n\nOpen the release page?", "Update Available",
+                             wx.YES_NO | wx.ICON_INFORMATION) == wx.YES:
+                wx.LaunchDefaultBrowser(release["page"])
+            return
+        if wx.MessageBox(f"{header}\n\n{notes}\n\nDownload and install it now? OklyPlay will restart.",
+                         "Update Available", wx.YES_NO | wx.ICON_INFORMATION) == wx.YES:
+            self._DownloadUpdate(release)
+
+    def _DownloadUpdate(self, release):
+        dlg = wx.ProgressDialog("Downloading Update", f"Downloading OklyPlay {release['version']}", maximum=100,
+                                parent=self, style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT | wx.PD_AUTO_HIDE)
+        state = {"cancel": False, "pct": -1}
+        dest = updater.download_path()
+
+        def on_progress(done, total):
+            pct = int(done * 100 / total) if total else 0
+            if pct != state["pct"]:
+                state["pct"] = pct
+                wx.CallAfter(update_dialog, min(pct, 99))
+            return not state["cancel"]
+
+        def update_dialog(pct):
+            if state["cancel"]:
+                return
+            keep_going, _ = dlg.Update(pct, f"Downloading OklyPlay {release['version']}: {pct} percent")
+            if not keep_going:
+                state["cancel"] = True
+
+        def work():
+            try:
+                updater.download(release, dest, on_progress)
+                error = None
+            except updater.UpdateError as e:
+                error = str(e)
+            wx.CallAfter(finish, error)
+
+        def finish(error):
+            dlg.Destroy()
+            if error:
+                if not state["cancel"]:
+                    wx.MessageBox(error, "Update Failed", wx.OK | wx.ICON_ERROR)
+                return
+            try:
+                if self.project_data and self.project_dir:
+                    project_manager.save_project(self.project_dir, self.project_data)
+                self.audio_engine.close()
+                updater.install_and_restart(dest)
+            except Exception as e:
+                try:
+                    self.audio_engine._open_stream()  # keep the soundboard usable
+                except Exception:
+                    pass
+                wx.MessageBox(f"Could not install the update:\n{e}", "Update Failed", wx.OK | wx.ICON_ERROR)
+                return
+            Speech.speak("Update installed. Restarting OklyPlay.")
+            self.Close()
+
+        threading.Thread(target=work, daemon=True).start()
 
     # --- Help & About Dialog ---
     def OnAbout(self, event):

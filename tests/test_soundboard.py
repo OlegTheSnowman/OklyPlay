@@ -17,6 +17,10 @@ from audio_engine import LoadedSound, Channel, AudioEngine
 import project_manager
 import ui_dialogs
 import ui_main
+import updater
+
+# Never reach GitHub from the tests: the startup update check is scheduled by MainFrame.
+patch('updater.fetch_latest', side_effect=updater.UpdateError("offline in tests")).start()
 
 class TestSpeechModule(unittest.TestCase):
     def test_singleton(self):

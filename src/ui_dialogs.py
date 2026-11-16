@@ -369,7 +369,7 @@ class NewProjectDialog(wx.Dialog):
 
 class PreferencesDialog(wx.Dialog):
     """Dialog to configure output device and master volume."""
-    def __init__(self, parent, devices, current_device_index, current_volume):
+    def __init__(self, parent, devices, current_device_index, current_volume, check_updates=True):
         super().__init__(parent, title="Preferences")
 
         panel = wx.Panel(self)
@@ -400,8 +400,16 @@ class PreferencesDialog(wx.Dialog):
         grid.Add(vol_lbl, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.vol_slider, 1, wx.EXPAND)
 
+        upd_group, upd_grid, upd_box = form_group(panel, "Updates")
+        self.updates_chk = wx.CheckBox(upd_box, label="Check for updates when OklyPlay starts")
+        label_control(self.updates_chk, "Check for updates when OklyPlay starts")
+        self.updates_chk.SetValue(bool(check_updates))
+        upd_grid.Add(self.updates_chk, 0)
+        upd_grid.AddSpacer(0)
+
         content = wx.BoxSizer(wx.VERTICAL)
         content.Add(group, 1, wx.EXPAND | wx.BOTTOM, PAD)
+        content.Add(upd_group, 0, wx.EXPAND | wx.BOTTOM, PAD)
 
         # Buttons
         btn_sizer, ok_btn, cancel_btn = create_dialog_buttons(panel)
@@ -418,6 +426,9 @@ class PreferencesDialog(wx.Dialog):
 
     def GetMasterVolume(self):
         return self.vol_slider.GetValue() / 100.0
+
+    def GetCheckUpdates(self):
+        return self.updates_chk.GetValue()
 
 
 class SoundManagerDialog(wx.Dialog):
