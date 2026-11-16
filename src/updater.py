@@ -52,6 +52,15 @@ def _get(url, accept="application/vnd.github+json"):
     return urllib.request.urlopen(req, timeout=TIMEOUT)
 
 
+def plain_notes(markdown):
+    """Release notes are Markdown. Show them as plain text: "### Fixed" becomes
+    "Fixed:", list dashes become bullets, and bold or code marks go away."""
+    text = re.sub(r"(?m)^#+\s*(.+?)\s*$", r"\1:", markdown)
+    text = re.sub(r"(?m)^(\s*)[-*]\s+", "\\1\u2022 ", text)
+    text = re.sub(r"\*\*(.+?)\*\*|`(.+?)`", lambda m: m.group(1) or m.group(2), text)
+    return text.strip()
+
+
 def fetch_latest():
     """Ask GitHub for the latest release. Returns a dict with version, notes, page,
     and the exe's download url, size and sha256 (None when GitHub gives none)."""
@@ -64,8 +73,7 @@ def fetch_latest():
     digest = (asset or {}).get("digest") or ""
     return {
         "version": data.get("tag_name", "").lstrip("v"),
-        # Release notes are Markdown; drop heading marks so "### Fixed" reads as "Fixed"
-        "notes": re.sub(r"(?m)^#+\s*", "", data.get("body") or "").strip(),
+        "notes": plain_notes(data.get("body") or ""),
         "page": data.get("html_url") or RELEASES_PAGE,
         "url": asset.get("browser_download_url") if asset else None,
         "size": asset.get("size") if asset else None,
