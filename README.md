@@ -3,71 +3,58 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Build](https://github.com/OlegTheSnowman/OklyPlay/actions/workflows/release.yml/badge.svg)
 ![Tests](https://github.com/OlegTheSnowman/OklyPlay/actions/workflows/tests.yml/badge.svg)
 
-A soundboard for streamers, built to be fully usable with just a keyboard and a screen reader.
+OklyPlay is a soundboard for streamers that you can run entirely from the keyboard with a screen reader.
 
-Most soundboards on the market are unusable if you're blind. Custom-drawn buttons and grids, no labels, no real keyboard navigation, nothing a screen reader can make sense of. I couldn't find one that worked, so I built one. NVDA, JAWS, and Windows Narrator support was the starting point here, not something bolted on afterward.
+I'm blind, and every soundboard I tried was a wall of custom-drawn buttons with no labels and no keyboard path through them. NVDA had nothing to read. So I wrote my own. It uses native Windows controls, so NVDA, JAWS and Narrator see a normal app, and it speaks the things you would otherwise have to look for: which bus you switched to, the new volume, the next track in a playlist.
 
-Built with wxPython, sounddevice, soundfile, numpy, and accessible_output2.
+It also has to look decent to the sighted people watching the stream, so there is a header with the project name, a colour per bus, and a speaker icon next to whatever is playing.
 
----
+## How it works
 
-## What it does
+Sounds live on buses, which are just groups with their own volume. A layered bus lets sounds stack, which is what you want for effects. An exclusive bus fades out whatever was playing when a new sound starts, which suits music. Exclusive buses crossfade into each other, and a bus can duck the others while it plays, so music drops under an alert and comes back up after.
 
-Every control is labeled and every action announces itself, so there are no mystery icons or unlabeled buttons to hunt for.
+To get sounds in, open the Sound Manager with Alt+S, import a whole folder (or paste files you copied in Explorer), and sort them onto buses with Ctrl+1 to Ctrl+9.
 
-Sounds live on buses, which is really just a fancy word for groups. A layered bus stacks sounds on top of each other, which suits sound effects. An exclusive bus cuts off whatever else is playing on it, which suits music. Mix and match however you like.
+Any sound can have its own hotkey, and so can a bus. A bus hotkey plays one random or next sound, or starts a playlist that shuffles or loops through the whole bus until you stop it. I use that for background music. OklyPlay refuses a hotkey that is already taken by another sound, another bus, or one of its own shortcuts. Hotkeys work while the OklyPlay window has focus; they are not global.
 
-The Sound Manager (`Alt+S`) is where you bulk-import a folder of clips and then sort them onto buses at your own pace, using `Ctrl+1` through `Ctrl+9`.
+Each sound can also keep a few presets, called scenarios: different volume, fades, speed, pitch, looping, or another bus. Alt+1 to Alt+9 plays the selected sound with scenario 1 to 9.
 
-You can bind any sound, or a whole bus, to a system-wide hotkey. Conflict detection stops you from accidentally clobbering an existing bind. Point a hotkey at a bus and it will shuffle or sequence through everything on it, looping until you tell it to stop, which is handy for background music you don't want to babysit.
+A project is a folder with a `project.json` and a `sounds` folder. You can export it as a zip, move it to another computer, and import it there.
 
-Each sound can have several saved presets, called scenarios: volume, fade in and out, speed, loop, an alternate bus. Switch between them instead of re-editing the same clip every time you want it to sound slightly different.
+Every message the app shows opens with its text in a read-only field that has focus, so you can read it line by line or copy it, then Tab to the buttons. Help > Check for Updates looks for a new release on GitHub, and the exe can update itself.
 
-Exclusive buses crossfade into each other, and looping playlists crossfade track to track, so nothing cuts in or out abruptly.
-
-A project is just a folder, config plus audio files, so you can zip it up and hand it to someone else or move it between machines without anything breaking.
-
-For the full rundown of every feature, see [features.md](features.md).
-
----
+[features.md](features.md) describes every feature in detail.
 
 ## Keyboard shortcuts
 
 | Action | Shortcut |
 |--------|----------|
-| Play selected sound | `Space` |
-| Stop selected sound | `Delete` |
-| Stop current bus | `Escape` |
-| Stop all sounds | `Alt + Escape` |
-| Switch active bus | `Ctrl + 1` through `Ctrl + 9` |
-| Adjust bus volume | `Ctrl + Up` / `Ctrl + Down` |
-| Adjust master volume | `Ctrl + Shift + Up` / `Ctrl + Shift + Down` |
-| Sound Manager | `Alt + S` |
-| Import sounds (in Manager) | `Ctrl + I` |
-| Assign to bus N (in Manager) | `Ctrl + 1` through `Ctrl + 9` |
-| Unassign bus (in Manager) | `Ctrl + U` |
-| Quick hotkey assign | `Alt + K` |
-| Edit sound | `F2` |
-| Project Manager | `Ctrl + M` |
-| Manage buses | `Ctrl + B` |
-| Preferences / device setup | `Ctrl + Alt + P` |
-| Help & shortcuts dialog | `Ctrl + H` |
+| Play the selected sound | Space or Enter |
+| Play it with scenario 1 to 9 | Alt+1 to Alt+9 |
+| Stop the current bus | Escape |
+| Stop everything | Alt+Escape |
+| Switch to bus 1 to 9 | Ctrl+1 to Ctrl+9 |
+| Bus volume up or down | Ctrl+Up, Ctrl+Down |
+| Master volume up or down | Ctrl+Shift+Up, Ctrl+Shift+Down |
+| Add a sound | Ctrl+I |
+| Edit the selected sound | F2 |
+| Remove the selected sound | Delete |
+| Set its hotkey | Alt+K |
+| Edit its scenarios | Ctrl+E |
+| Sound Manager | Alt+S |
+| Manage buses | Ctrl+B |
+| New, open, save project | Ctrl+N, Ctrl+O, Ctrl+S |
+| Project Manager | Ctrl+M |
 
----
+Inside the Sound Manager, Ctrl+1 to Ctrl+9 moves the selected sound to that bus, Ctrl+U takes it off its bus, Ctrl+I imports files, and Ctrl+V pastes files copied in Explorer. Preferences, where you pick the output device, is in the File menu.
 
-## Getting started
+## Getting it
 
-### Portable build (Windows, no install)
+Download `OklyPlay.exe` from [Releases](https://github.com/OlegTheSnowman/OklyPlay/releases) and run it. There is no installer. Newer versions can be installed from inside the app with Help > Check for Updates.
 
-1. Grab the latest `OklyPlay.exe` from [Releases](https://github.com/OlegTheSnowman/OklyPlay/releases).
-2. Run it. No installer, no setup wizard.
-
-### Running from source
-
-Needs Python 3.11+.
+To run it from source you need Python 3.11 or newer:
 
 ```bash
 git clone https://github.com/OlegTheSnowman/OklyPlay.git
@@ -76,53 +63,35 @@ pip install -r requirements.txt
 python src/soundboard.py
 ```
 
-### Building the executable yourself
+To build the exe yourself, run `build_portable.bat`. It installs PyInstaller and writes `dist/OklyPlay.exe`. Releases are built this way and uploaded with `gh release create`.
 
-```bash
-pip install pyinstaller
-build_portable.bat
-```
-
-The result lands in `dist/OklyPlay.exe`. Every tagged release (`v*`) also builds and publishes automatically through GitHub Actions.
-
----
-
-## How it's put together
+## Code layout
 
 ```
-src/soundboard.py          entry point, creates the wx.App and main window
-src/ui_main.py              main window: bus list, sound list, menu, status bar
-src/ui_dialogs.py           every modal dialog (projects, prefs, sound/bus editing)
-src/audio_engine.py         the mixer itself: buses, channels, fades, device output
-src/project_manager.py      load/save/import/export of project files
-src/accessible_speech.py    thin wrapper for screen reader announcements
+src/soundboard.py          entry point
+src/ui_main.py             main window: buses, sounds, menus, status bar, updates
+src/ui_dialogs.py          the dialogs and the message box
+src/branding.py            colours, logo and list icons, all drawn in code
+src/audio_engine.py        the mixer: channels, fades, crossfades, ducking, pitch
+src/project_manager.py     loading, saving, importing and exporting projects
+src/updater.py             checks GitHub releases and swaps in the new exe
+src/accessible_speech.py   speaks through the running screen reader
+tools/make_icon.py         writes assets/oklyplay.ico from the logo drawing
 ```
 
-A project is just a folder: `project.json` for all the config, plus a `sounds/` directory holding the actual audio files. That's the whole portability story. Zip the folder, send it, done.
-
----
-
-## Running the tests
+## Tests
 
 ```bash
 pip install pytest
 python -m pytest
 ```
 
-`tests/test_soundboard.py` covers the audio engine (resampling, speed/pitch,
-fades, exclusive-bus crossfade, bus ducking), project load/save/import/export,
-hotkey parsing, and playlist logic. `TestAccessibilityLabeling` is its own
-class: it asserts `GetAccessible().GetName()` on every dialog control, so a
-control losing its accessible name fails the suite instead of shipping quietly.
-That's on top of manual passes with NVDA, JAWS, and Narrator across every
-keyboard-only path in the mixer. Tests run on every push and pull request to
-`main` (see `.github/workflows/tests.yml`); a screen-reader bug is a build
-failure here, not a follow-up ticket.
+The tests in `tests/test_soundboard.py` cover the audio engine (resampling, speed, pitch, fades, crossfades, ducking), projects (saving, loading, import and export, including bad zips), hotkey rules, playlists, the updater and the dialogs. One group checks that every dialog control has an accessible name, so a control that loses its label fails the build. They run on GitHub for every push and pull request to `master`.
 
----
+The tests open real windows. On my own machine I run them on a separate hidden Windows desktop so they don't pop up while I work.
 
 ## License
 
 MIT, see [LICENSE](LICENSE).
 
-If you hit a bug, open an issue. If you're blind or low-vision and something in here doesn't play nice with your screen reader, that counts as a bug too, so tell me.
+If something breaks, open an issue. If you use a screen reader and something in OklyPlay is hard to reach or read, that is a bug too, so please tell me.
